@@ -1,21 +1,16 @@
-// lib/screens/result_screen.dart
-
 import 'package:flutter/material.dart';
-
 import '../models/receipt_analysis.dart';
 import '../models/receipt_input.dart';
 import '../services/api_service.dart';
+import '../utils/trust_score.dart';
+import '../utils/final_risk.dart';
 import 'proof_screen.dart';
 
 class ResultScreen extends StatefulWidget {
   final ReceiptAnalysis analysis;
   final ReceiptInput? receiptInput;
 
-  const ResultScreen({
-    super.key,
-    required this.analysis,
-    this.receiptInput,
-  });
+  const ResultScreen({super.key, required this.analysis, this.receiptInput});
 
   @override
   State<ResultScreen> createState() => _ResultScreenState();
@@ -23,12 +18,29 @@ class ResultScreen extends StatefulWidget {
 
 class _ResultScreenState extends State<ResultScreen> {
   bool _certifying = false;
+  late TrustScore _trustScore;
+  late FinalRisk _finalRisk;
 
-  /// Canonical text MUST be stable (this is what gets hashed and anchored).
-  /// Normalize merchant + currency to reduce trivial formatting mismatches.
+  @override
+  void initState() {
+    super.initState();
+    _trustScore = TrustScore.compute(
+      merchant: widget.analysis.merchant,
+      date: widget.analysis.date,
+      currency: widget.analysis.currency,
+      subtotal: widget.analysis.subtotal,
+      tax: widget.analysis.tax,
+      total: widget.analysis.total,
+    );
+
+    _finalRisk = FinalRisk.resolve(
+      analysis: widget.analysis,
+      trustScore: _trustScore,
+    );
+  }
+
   String _buildCanonicalText(ReceiptAnalysis a) {
     String money(double v) => v.toStringAsFixed(2);
-
     final merchant = a.merchant.trim().toLowerCase();
     final date = a.date.trim();
     final currency = a.currency.trim().toUpperCase();
@@ -48,17 +60,14 @@ class _ResultScreenState extends State<ResultScreen> {
 
     try {
       final canonicalText = _buildCanonicalText(widget.analysis);
-
-      // Call backend
       final certJson = await ApiService.certifyReceipt(canonicalText);
 
       final txSignature = (certJson['txSignature'] ?? '').toString();
-      if (txSignature.isEmpty) {
-        throw Exception('Missing txSignature from backend.');
-      }
+      if (txSignature.isEmpty) throw Exception('Missing txSignature');
 
       final explorerUrl = certJson['explorerUrl']?.toString();
       final duplicate = certJson['duplicate'] == true;
+      final seenCount = certJson['seenCount'] as int? ?? 1;
       final firstSeenTx = certJson['firstSeenTx']?.toString();
       final firstSeenAt = certJson['firstSeenAt']?.toString();
 
@@ -71,6 +80,7 @@ class _ResultScreenState extends State<ResultScreen> {
             txSignature: txSignature,
             explorerUrl: explorerUrl,
             duplicate: duplicate,
+            seenCount: seenCount,
             firstSeenTx: firstSeenTx,
             firstSeenAt: firstSeenAt,
             receiptInput: widget.receiptInput,
@@ -89,63 +99,47 @@ class _ResultScreenState extends State<ResultScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isSuspicious = widget.analysis.verdict == 'SUSPICIOUS';
-
     return Scaffold(
-      appBar: AppBar(title: const Text('Analysis')),
+      appBar: AppBar(title: const Text('Analysis Result')),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _VerdictHeader(analysis: widget.analysis),
+            _RiskCard(finalRisk: _finalRisk, trustScore: _trustScore, aiConfidence: widget.analysis.confidence),
             const SizedBox(height: 16),
-            _KeyFieldsCard(analysis: widget.analysis),
+            _WhyThisVerdictCard(finalRisk: _finalRisk, analysis: widget.analysis, trustScore: _trustScore),
             const SizedBox(height: 16),
-            _ReasonsCard(analysis: widget.analysis),
-
-            const SizedBox(height: 18),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: isSuspicious ? Colors.red.shade50 : Colors.blue.shade50,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: isSuspicious ? Colors.red.shade200 : Colors.blue.shade100,
+            _FieldsCard(analysis: widget.analysis),
+            const SizedBox(height: 20),
+            Card(
+              color: _finalRisk.level == RiskLevel.bad ? Colors.red.shade50 : Colors.blue.shade50,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  _finalRisk.level == RiskLevel.bad
+                      ? '⚠️ Create proof to lock state and detect future edits'
+                      : '✅ Create proof to certify this receipt on blockchain',
+                  style: TextStyle(
+                    color: _finalRisk.level == RiskLevel.bad ? Colors.red.shade900 : Colors.blue.shade900,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  textAlign: TextAlign.center,
                 ),
               ),
-              child: Text(
-                isSuspicious
-                    ? 'Recommendation: Do NOT reimburse until verified. Create proof and run verification.'
-                    : 'Recommendation: Create proof so any later edits are detectable.',
-                style: Theme.of(context).textTheme.bodySmall,
-                textAlign: TextAlign.center,
-              ),
             ),
-
             const SizedBox(height: 24),
             ElevatedButton.icon(
               onPressed: _certifying ? null : _certifyOnSolana,
               icon: _certifying
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                   : const Icon(Icons.verified),
-              label: Text(_certifying ? 'Creating proof...' : 'Create Tamper-Proof Record'),
+              label: Text(_certifying ? 'Creating proof...' : 'Create Blockchain Proof'),
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                foregroundColor: Colors.white,
               ),
-            ),
-            const SizedBox(height: 10),
-            OutlinedButton.icon(
-              onPressed: _certifying ? null : () => Navigator.pop(context),
-              icon: const Icon(Icons.edit),
-              label: const Text('Edit Receipt'),
             ),
           ],
         ),
@@ -154,168 +148,207 @@ class _ResultScreenState extends State<ResultScreen> {
   }
 }
 
-class _VerdictHeader extends StatelessWidget {
-  final ReceiptAnalysis analysis;
-  const _VerdictHeader({required this.analysis});
+class _RiskCard extends StatelessWidget {
+  final FinalRisk finalRisk;
+  final TrustScore trustScore;
+  final double aiConfidence;
 
-  Color _getVerdictColor(BuildContext context) {
-    switch (analysis.verdict) {
-      case 'LIKELY_REAL':
-        return Colors.green.shade100;
-      case 'SUSPICIOUS':
-        return Colors.red.shade100;
-      case 'UNREADABLE':
-        return Colors.orange.shade100;
-      default:
-        return Theme.of(context).colorScheme.surfaceContainerHighest;
+  const _RiskCard({required this.finalRisk, required this.trustScore, required this.aiConfidence});
+
+  MaterialColor _getColor() {
+    switch (finalRisk.level) {
+      case RiskLevel.good:
+        return Colors.green;
+      case RiskLevel.warning:
+        return Colors.orange;
+      case RiskLevel.bad:
+        return Colors.red;
     }
   }
 
-  Color _getTextColor() {
-    switch (analysis.verdict) {
-      case 'LIKELY_REAL':
-        return Colors.green.shade900;
-      case 'SUSPICIOUS':
-        return Colors.red.shade900;
-      case 'UNREADABLE':
-        return Colors.orange.shade900;
-      default:
-        return Colors.black87;
+  IconData _getIcon() {
+    switch (finalRisk.level) {
+      case RiskLevel.good:
+        return Icons.check_circle;
+      case RiskLevel.warning:
+        return Icons.warning;
+      case RiskLevel.bad:
+        return Icons.cancel;
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final badge = analysis.badgeText;
-    final score = analysis.fraudScore;
+    final color = _getColor();
+    final icon = _getIcon();
 
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: _getVerdictColor(context),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: _getTextColor().withOpacity(0.3),
-          width: 2,
+    return Card(
+      color: color[50],
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          children: [
+            Icon(icon, color: color.shade700, size: 48),
+            const SizedBox(height: 12),
+            Text(
+              finalRisk.badge,
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: color.shade900),
+            ),
+            const SizedBox(height: 6),
+            Text(finalRisk.summary, style: TextStyle(color: color.shade700, fontSize: 14), textAlign: TextAlign.center),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _metric('Trust Score', '${trustScore.score}/100', color),
+                _metric('AI Confidence', '${(aiConfidence * 100).toStringAsFixed(0)}%', color),
+              ],
+            ),
+          ],
         ),
       ),
-      child: Column(
-        children: [
-          Text(
-            badge,
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  color: _getTextColor(),
-                ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            analysis.subtitle,
-            style: TextStyle(color: _getTextColor()),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'Fraud Score: $score / 100',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: _getTextColor(),
-                ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Confidence: ${(analysis.confidence * 100).toStringAsFixed(0)}%',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: _getTextColor(),
-                ),
-          ),
-        ],
-      ),
+    );
+  }
+
+  Widget _metric(String label, String value, Color color) {
+    return Column(
+      children: [
+        Text(value, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: (color as MaterialColor).shade900)),
+        const SizedBox(height: 2),
+        Text(label, style: TextStyle(fontSize: 11, color: (color as MaterialColor).shade600)),
+      ],
     );
   }
 }
 
-class _KeyFieldsCard extends StatelessWidget {
+class _WhyThisVerdictCard extends StatelessWidget {
+  final FinalRisk finalRisk;
   final ReceiptAnalysis analysis;
-  const _KeyFieldsCard({required this.analysis});
+  final TrustScore trustScore;
+
+  const _WhyThisVerdictCard({required this.finalRisk, required this.analysis, required this.trustScore});
 
   @override
   Widget build(BuildContext context) {
-    Widget row(String k, String v) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  k,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  v,
-                  textAlign: TextAlign.right,
-                ),
-              ),
-            ],
-          ),
-        );
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text('Extracted Fields', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          row('Merchant', analysis.merchant.isEmpty ? '—' : analysis.merchant),
-          row('Date', analysis.date.isEmpty ? '—' : analysis.date),
-          row('Currency', analysis.currency),
-          const Divider(height: 18),
-          row('Subtotal', '${analysis.currency} ${analysis.money(analysis.subtotal)}'),
-          row('Tax', '${analysis.currency} ${analysis.money(analysis.tax)}'),
-          row('Total', '${analysis.currency} ${analysis.money(analysis.total)}'),
-        ],
-      ),
-    );
-  }
-}
-
-class _ReasonsCard extends StatelessWidget {
-  final ReceiptAnalysis analysis;
-  const _ReasonsCard({required this.analysis});
-
-  @override
-  Widget build(BuildContext context) {
-    final reasons = analysis.reasons.isEmpty ? ['No reasons provided.'] : analysis.reasons;
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text('Why', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          ...reasons.map(
-            (r) => Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('•  '),
-                  Expanded(child: Text(r)),
-                ],
-              ),
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.help_outline, color: Theme.of(context).colorScheme.primary, size: 20),
+                const SizedBox(width: 8),
+                Text('Why This Verdict?', style: Theme.of(context).textTheme.titleMedium),
+              ],
             ),
-          ),
+            const SizedBox(height: 12),
+
+            // Main explanation
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.grey.shade200),
+              ),
+              child: Text(finalRisk.explanation, style: const TextStyle(fontSize: 13)),
+            ),
+
+            const SizedBox(height: 16),
+
+            // Rule-based checks
+            Text('Rule-Based Checks', style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(height: 8),
+            ...trustScore.checks.map((check) {
+              Color chipColor;
+              IconData icon;
+              switch (check.status) {
+                case 'pass':
+                  chipColor = Colors.green;
+                  icon = Icons.check_circle_outline;
+                  break;
+                case 'warn':
+                  chipColor = Colors.orange;
+                  icon = Icons.warning_amber;
+                  break;
+                default:
+                  chipColor = Colors.red;
+                  icon = Icons.error_outline;
+              }
+
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  children: [
+                    Icon(icon, color: (chipColor as MaterialColor).shade700, size: 16),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text('${check.name}: ${check.description}', style: const TextStyle(fontSize: 12)),
+                    ),
+                  ],
+                ),
+              );
+            }),
+
+            // AI reasoning
+            if (analysis.reasons.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text('AI Observations', style: Theme.of(context).textTheme.titleSmall),
+              const SizedBox(height: 8),
+              ...analysis.reasons.map((r) => Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('•  ', style: TextStyle(fontSize: 12)),
+                        Expanded(child: Text(r, style: const TextStyle(fontSize: 12))),
+                      ],
+                    ),
+                  )),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FieldsCard extends StatelessWidget {
+  final ReceiptAnalysis analysis;
+  const _FieldsCard({required this.analysis});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Extracted Fields', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 12),
+            _row('Merchant', analysis.merchant.isEmpty ? '—' : analysis.merchant),
+            _row('Date', analysis.date.isEmpty ? '—' : analysis.date),
+            _row('Currency', analysis.currency),
+            const Divider(height: 24),
+            _row('Subtotal', '${analysis.currency} ${analysis.money(analysis.subtotal)}'),
+            _row('Tax', '${analysis.currency} ${analysis.money(analysis.tax)}'),
+            _row('Total', '${analysis.currency} ${analysis.money(analysis.total)}'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _row(String k, String v) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Expanded(child: Text(k, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13))),
+          Expanded(child: Text(v, textAlign: TextAlign.right, style: const TextStyle(fontSize: 13))),
         ],
       ),
     );

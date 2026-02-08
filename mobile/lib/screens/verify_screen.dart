@@ -1,11 +1,9 @@
-// mobile/lib/screens/verify_screen.dart
-
 import 'package:flutter/material.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
-
+import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 import '../models/receipt_input.dart';
-import '../models/verify_result.dart';
 import '../services/api_service.dart';
+import 'verify_result_screen.dart';
 
 class VerifyScreen extends StatefulWidget {
   final String? initialTxSignature;
@@ -16,168 +14,141 @@ class VerifyScreen extends StatefulWidget {
 }
 
 class _VerifyScreenState extends State<VerifyScreen> {
-  late final TextEditingController _txController;
-
-  ReceiptInput? _receiptInput;
-  VerifyResult? _result;
-
-  String? _chainCanonicalText;
-  String? _localCanonicalText;
-
-  // NEW: Proof lookup bundle (from GET /proof/:tx)
-  Map<String, dynamic>? _proofBundle;
-  bool _loadingProof = false;
-  String? _proofError;
+  final _formKey = GlobalKey<FormState>();
+  late TextEditingController _txController;
+  late TextEditingController _merchantController;
+  late TextEditingController _dateController;
+  late TextEditingController _subtotalController;
+  late TextEditingController _taxController;
+  late TextEditingController _totalController;
+  late TextEditingController _customCurrencyController;
 
   bool _verifying = false;
+  bool _fetchingProof = false;
+  String? _proofStatus; // 'found' | 'not_found' | null
+  String? _certifiedSnapshot;
+
+  final List<String> _commonCurrencies = ['CAD', 'USD', 'EUR', 'GBP', 'INR', 'AUD', 'Custom'];
+  String _selectedCurrency = 'CAD';
 
   @override
   void initState() {
     super.initState();
     _txController = TextEditingController(text: widget.initialTxSignature ?? '');
+    _merchantController = TextEditingController();
+    _dateController = TextEditingController();
+    _subtotalController = TextEditingController();
+    _taxController = TextEditingController();
+    _totalController = TextEditingController();
+    _customCurrencyController = TextEditingController();
 
-    // If initial tx exists, attempt proof lookup immediately
-    final initial = _txController.text.trim();
-    if (initial.isNotEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _fetchProofBundle(initial);
-      });
+    if (widget.initialTxSignature != null && widget.initialTxSignature!.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _fetchProof());
     }
-
-    // Optional: auto proof lookup when user edits tx field (debounced-ish)
-    _txController.addListener(() {
-      final tx = _txController.text.trim();
-      // Don't spam calls while verifying
-      if (_verifying || tx.length < 20) return;
-    });
   }
 
   @override
   void dispose() {
     _txController.dispose();
+    _merchantController.dispose();
+    _dateController.dispose();
+    _subtotalController.dispose();
+    _taxController.dispose();
+    _totalController.dispose();
+    _customCurrencyController.dispose();
     super.dispose();
   }
 
-  String _buildCanonicalText(ReceiptInput input) {
-    final merchant = input.merchant.trim().toLowerCase();
-    final date = input.date.trim();
-    final currency = input.currency.trim().toUpperCase();
-    final subtotal = input.subtotal.toStringAsFixed(2);
-    final tax = input.tax.toStringAsFixed(2);
-    final total = input.total.toStringAsFixed(2);
-
-    return 'merchant=$merchant\n'
-        'date=$date\n'
-        'currency=$currency\n'
-        'subtotal=$subtotal\n'
-        'tax=$tax\n'
-        'total=$total';
-  }
-
-  Map<String, String> _parseCanonical(String? text) {
-    if (text == null || text.trim().isEmpty) return {};
-    final lines = text.split('\n');
-    final map = <String, String>{};
-    for (final line in lines) {
-      final idx = line.indexOf('=');
-      if (idx <= 0) continue;
-      final k = line.substring(0, idx).trim();
-      final v = line.substring(idx + 1).trim();
-      map[k] = v;
+  String get _effectiveCurrency {
+    if (_selectedCurrency == 'Custom') {
+      return _customCurrencyController.text.trim().toUpperCase();
     }
-    return map;
+    return _selectedCurrency;
   }
 
-  Future<void> _enterReceipt() async {
-    final result = await Navigator.push<ReceiptInput>(
-      context,
-      MaterialPageRoute(builder: (_) => const _VerifyEntryScreen()),
-    );
-
-    if (result != null) {
-      setState(() {
-        _receiptInput = result;
-        _result = null;
-        _chainCanonicalText = null;
-        _localCanonicalText = null;
-      });
-    }
-  }
-
-  String _extractTxFromQr(String raw) {
-    // Supports:
-    // 1) raw tx signature
-    // 2) vericeipt://proof?tx=...&v=1
-    try {
-      if (raw.startsWith('vericeipt://')) {
-        final uri = Uri.parse(raw);
-        final tx = uri.queryParameters['tx'];
-        if (tx != null && tx.trim().isNotEmpty) return tx.trim();
-      }
-    } catch (_) {}
-    return raw.trim();
-  }
-
-  Future<void> _scanQr() async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => _QrScanPage(
-          onScanned: (raw) {
-            final tx = _extractTxFromQr(raw);
-            _txController.text = tx;
-          },
-        ),
-      ),
-    );
-
+  Future<void> _fetchProof() async {
     final tx = _txController.text.trim();
-    if (tx.isNotEmpty) {
-      await _fetchProofBundle(tx);
-    }
-
-    if (mounted) setState(() {});
-  }
-
-  Future<void> _fetchProofBundle(String txSignature) async {
-    final tx = txSignature.trim();
     if (tx.isEmpty) return;
 
     setState(() {
-      _loadingProof = true;
-      _proofError = null;
-      _proofBundle = null;
+      _fetchingProof = true;
+      _proofStatus = null;
+      _certifiedSnapshot = null;
     });
 
     try {
-      final json = await ApiService.getProof(tx);
+      final proofBundle = await ApiService.getProof(tx);
       if (!mounted) return;
 
-      setState(() {
-        _proofBundle = json;
-        _loadingProof = false;
-      });
+      final found = proofBundle['found'] == true;
+      final canonicalText = proofBundle['canonicalText']?.toString();
+
+      if (found && canonicalText != null && canonicalText.isNotEmpty) {
+        setState(() {
+          _proofStatus = 'found';
+          _certifiedSnapshot = canonicalText;
+        });
+      } else {
+        setState(() => _proofStatus = 'not_found');
+      }
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _loadingProof = false;
-        _proofError = e.toString();
-      });
+      setState(() => _proofStatus = 'not_found');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Proof lookup failed: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _fetchingProof = false);
     }
   }
 
-  Future<void> _verify() async {
-    if (_receiptInput == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter receipt data first')),
-      );
-      return;
+  void _autofillFromCertified() {
+    if (_certifiedSnapshot == null) return;
+    _parseCanonicalIntoForm(_certifiedSnapshot!);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('✅ Certified data loaded')),
+    );
+  }
+
+  void _parseCanonicalIntoForm(String canonical) {
+    final lines = canonical.split('\n');
+    final map = <String, String>{};
+    for (final line in lines) {
+      final idx = line.indexOf('=');
+      if (idx > 0) {
+        final k = line.substring(0, idx).trim();
+        final v = line.substring(idx + 1).trim();
+        map[k] = v;
+      }
     }
 
-    final tx = _txController.text.trim();
-    if (tx.isEmpty) {
+    if (map['merchant'] != null) _merchantController.text = map['merchant']!;
+    if (map['date'] != null) _dateController.text = map['date']!;
+
+    if (map['currency'] != null) {
+      final curr = map['currency']!.toUpperCase();
+      if (_commonCurrencies.contains(curr)) {
+        setState(() => _selectedCurrency = curr);
+      } else {
+        setState(() {
+          _selectedCurrency = 'Custom';
+          _customCurrencyController.text = curr;
+        });
+      }
+    }
+
+    if (map['subtotal'] != null) _subtotalController.text = map['subtotal']!;
+    if (map['tax'] != null) _taxController.text = map['tax']!;
+    if (map['total'] != null) _totalController.text = map['total']!;
+  }
+
+  Future<void> _verify() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    final currency = _effectiveCurrency;
+    if (currency.length != 3) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter or scan a transaction signature')),
+        const SnackBar(content: Text('Currency must be 3 letters')),
       );
       return;
     }
@@ -185,32 +156,33 @@ class _VerifyScreenState extends State<VerifyScreen> {
     setState(() => _verifying = true);
 
     try {
-      // Always re-fetch proof bundle once before verify (latest local store)
-      await _fetchProofBundle(tx);
+      final input = ReceiptInput(
+        merchant: _merchantController.text.trim(),
+        date: _dateController.text.trim(),
+        currency: currency,
+        subtotal: double.parse(_subtotalController.text),
+        tax: double.parse(_taxController.text),
+        total: double.parse(_totalController.text),
+      );
 
-      final localCanonical = _buildCanonicalText(_receiptInput!);
-      final json = await ApiService.verifyReceipt(localCanonical, tx);
+      final canonicalText = _buildCanonicalText(input);
+      final txSignature = _txController.text.trim();
 
-      final verified = json['verified'] == true;
-      final message = (json['message'] ?? (verified ? 'VERIFIED' : 'NOT VERIFIED')).toString();
-      final chainHash = json['chainHash']?.toString();
-      final localHash = json['localHash']?.toString();
-
-      final chainCanon = json['chainCanonicalText']?.toString();
-      final localCanon = json['localCanonicalText']?.toString();
+      final result = await ApiService.verifyReceipt(canonicalText, txSignature);
 
       if (!mounted) return;
-      setState(() {
-        _result = VerifyResult(
-          verified: verified,
-          message: message,
-          chainHash: chainHash,
-          localHash: localHash,
-        );
-        _chainCanonicalText = chainCanon;
-        _localCanonicalText = localCanon;
-        _verifying = false;
-      });
+      setState(() => _verifying = false);
+
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => VerifyResultScreen(
+            verifyResult: result,
+            receiptInput: input,
+            certifiedSnapshot: _certifiedSnapshot,
+          ),
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() => _verifying = false);
@@ -220,501 +192,278 @@ class _VerifyScreenState extends State<VerifyScreen> {
     }
   }
 
-  void _demoVerify(bool ok) {
-    if (_receiptInput == null) setState(() => _receiptInput = ReceiptInput.demoLegit());
-    setState(() {
-      _result = ok ? VerifyResult.demoVerified() : VerifyResult.demoTampered();
-      _chainCanonicalText = ok ? _buildCanonicalText(_receiptInput!) : 'merchant=demo\nsubtotal=10.00\ntax=1.30\ntotal=12.34\ncurrency=CAD\ndate=2026-02-08';
-      _localCanonicalText = _buildCanonicalText(_receiptInput!);
+  String _buildCanonicalText(ReceiptInput input) {
+    String money(double v) => v.toStringAsFixed(2);
+    final merchant = input.merchant.trim().toLowerCase();
+    final date = input.date.trim();
+    final currency = input.currency.trim().toUpperCase();
 
-      _proofBundle = {
-        "success": true,
-        "found": true,
-        "txSignature": "DEMO_TX_SIGNATURE_123",
-        "hash": "demo_hash",
-        "duplicate": !ok,
-        "seenCount": ok ? 1 : 3,
-        "firstSeenAt": "2026-02-08T09:00:00Z",
-        "firstSeenTx": "DEMO_FIRST_TX_456",
-        "explorerUrl": "https://explorer.solana.com/tx/DEMO?cluster=devnet",
-        "canonicalText": _chainCanonicalText,
-      };
-      _proofError = null;
-      _loadingProof = false;
-    });
+    return [
+      'merchant=$merchant',
+      'date=$date',
+      'currency=$currency',
+      'subtotal=${money(input.subtotal)}',
+      'tax=${money(input.tax)}',
+      'total=${money(input.total)}',
+    ].join('\n');
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final chainMap = _parseCanonical(_chainCanonicalText);
-    final localMap = _parseCanonical(_localCanonicalText);
+  Future<void> _pasteFromClipboard() async {
+    final data = await Clipboard.getData('text/plain');
+    final text = data?.text ?? '';
+    if (text.startsWith('vericeipt://proof?tx=')) {
+      final uri = Uri.tryParse(text);
+      if (uri != null && uri.queryParameters['tx'] != null) {
+        _txController.text = uri.queryParameters['tx']!;
+        _fetchProof();
+      }
+    } else {
+      _txController.text = text;
+    }
+  }
 
-    final keys = <String>{...chainMap.keys, ...localMap.keys}.toList()..sort();
-    final showDiff = _result != null && _result!.verified == false && keys.isNotEmpty;
-
-    final proofFound = _proofBundle != null && (_proofBundle!['found'] == true || _proofBundle!['success'] == true);
-    final dup = proofFound && (_proofBundle!['duplicate'] == true);
-    final seenCount = proofFound ? (_proofBundle!['seenCount']?.toString() ?? '1') : null;
-    final firstSeenAt = proofFound ? (_proofBundle!['firstSeenAt']?.toString() ?? '—') : null;
-    final explorerUrl = proofFound ? (_proofBundle!['explorerUrl']?.toString()) : null;
-
-    return Scaffold(
-      appBar: AppBar(title: const Text('Verify Proof')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          if (_result != null) ...[
-            _ResultBadge(result: _result!),
-            const SizedBox(height: 16),
-          ],
-
-          // NEW: Proof Lookup Card (instant product feel)
-          _ProofLookupCard(
-            tx: _txController.text.trim(),
-            loading: _loadingProof,
-            error: _proofError,
-            bundle: _proofBundle,
-            onRefresh: _verifying ? null : () => _fetchProofBundle(_txController.text.trim()),
-          ),
-
-          if (proofFound) ...[
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: dup ? Colors.amber.shade50 : Colors.blue.shade50,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: dup ? Colors.amber.shade200 : Colors.blue.shade200),
-              ),
-              child: Text(
-                dup
-                    ? '⚠️ Duplicate signal: this fingerprint was certified before.\nSeen count: $seenCount\nFirst seen: $firstSeenAt'
-                    : '✅ Proof record found on this server.\nSeen count: $seenCount\nFirst seen: $firstSeenAt',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ),
-          ],
-
-          if (explorerUrl != null && explorerUrl.trim().isNotEmpty) ...[
-            const SizedBox(height: 10),
-            OutlinedButton.icon(
-              onPressed: () async {
-                await ApiService.copyToClipboard(explorerUrl);
-                if (!context.mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Explorer link copied'), duration: Duration(seconds: 1)),
-                );
-              },
-              icon: const Icon(Icons.open_in_new),
-              label: const Text('Copy Solana Explorer Link'),
-            ),
-          ],
-
-          const SizedBox(height: 16),
-
-          if (showDiff) ...[
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-              ),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                Text(
-                  'Forensic Replay: What Changed?',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-                ),
-                const SizedBox(height: 10),
-                ...keys.map((k) {
-                  final c = chainMap[k] ?? '—';
-                  final l = localMap[k] ?? '—';
-                  final match = c == l;
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: match ? Colors.green.shade50 : Colors.red.shade50,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: match ? Colors.green.shade200 : Colors.red.shade200),
-                    ),
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(k, style: const TextStyle(fontWeight: FontWeight.w800)),
-                      const SizedBox(height: 4),
-                      Text('Certified: $c', style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
-                      Text('Current:   $l', style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
-                    ]),
-                  );
-                }),
-              ]),
-            ),
-            const SizedBox(height: 20),
-          ],
-
-          if (_receiptInput != null) ...[
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.green.shade50,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.green.shade200),
-              ),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                Row(children: [
-                  Icon(Icons.check_circle, color: Colors.green.shade700, size: 20),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Receipt Data Entered',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.green.shade900),
-                  ),
-                ]),
-                const SizedBox(height: 12),
-                _InfoRow('Merchant', _receiptInput!.merchant),
-                _InfoRow('Date', _receiptInput!.date),
-                _InfoRow('Total', '${_receiptInput!.currency} ${_receiptInput!.total.toStringAsFixed(2)}'),
-              ]),
-            ),
-            const SizedBox(height: 20),
-          ],
-
-          OutlinedButton.icon(
-            onPressed: _verifying ? null : _enterReceipt,
-            icon: const Icon(Icons.edit_document),
-            label: Text(_receiptInput == null ? 'Enter Receipt Data' : 'Change Receipt Data'),
-            style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),
-          ),
-          const SizedBox(height: 20),
-
-          Text('Solana Transaction Signature', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _txController,
-            onChanged: (v) {
-              // If user pastes a tx, try proof lookup when it looks valid
-              final tx = v.trim();
-              if (tx.length >= 60 && !_loadingProof && !_verifying) {
-                _fetchProofBundle(tx);
-              }
-            },
-            decoration: const InputDecoration(
-              hintText: 'Enter or scan tx signature',
-              border: OutlineInputBorder(),
-            ),
-            minLines: 1,
-            maxLines: 3,
-          ),
-          const SizedBox(height: 12),
-
-          OutlinedButton.icon(
-            onPressed: _verifying ? null : _scanQr,
-            icon: const Icon(Icons.qr_code_scanner),
-            label: const Text('Scan QR Code'),
-          ),
-
-          const SizedBox(height: 24),
-
-          ElevatedButton.icon(
-            onPressed: _verifying ? null : _verify,
-            icon: _verifying
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                  )
-                : const Icon(Icons.verified_user),
-            label: Text(_verifying ? 'Verifying...' : 'Verify Receipt'),
-            style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),
-          ),
-
-          const SizedBox(height: 20),
-          const Divider(),
-          const SizedBox(height: 12),
-
-          Text('Demo Mode (for testing)',
-              style: Theme.of(context).textTheme.titleSmall, textAlign: TextAlign.center),
-          const SizedBox(height: 8),
-          Row(children: [
-            Expanded(child: OutlinedButton(onPressed: () => _demoVerify(true), child: const Text('Demo: Match'))),
-            const SizedBox(width: 8),
-            Expanded(child: OutlinedButton(onPressed: () => _demoVerify(false), child: const Text('Demo: Mismatch'))),
-          ]),
-        ]),
-      ),
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 1)),
     );
-  }
-}
-
-class _ProofLookupCard extends StatelessWidget {
-  final String tx;
-  final bool loading;
-  final String? error;
-  final Map<String, dynamic>? bundle;
-  final VoidCallback? onRefresh;
-
-  const _ProofLookupCard({
-    required this.tx,
-    required this.loading,
-    required this.error,
-    required this.bundle,
-    required this.onRefresh,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final found = bundle != null && (bundle!['found'] == true || bundle!['success'] == true);
-    final subtitle = found
-        ? 'Proof record loaded'
-        : 'Scan a VeriCeipt QR or paste a tx signature';
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [
-          Text('Instant Proof Lookup', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
-          const Spacer(),
-          if (onRefresh != null)
-            IconButton(
-              onPressed: loading ? null : onRefresh,
-              icon: const Icon(Icons.refresh),
-              tooltip: 'Refresh proof record',
-            ),
-        ]),
-        const SizedBox(height: 8),
-        Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
-        const SizedBox(height: 10),
-
-        if (loading) ...[
-          const LinearProgressIndicator(),
-          const SizedBox(height: 10),
-          const Text('Fetching proof record…', textAlign: TextAlign.center),
-        ] else if (error != null) ...[
-          Text(
-            'Proof lookup failed: $error',
-            style: TextStyle(color: Theme.of(context).colorScheme.error),
-          ),
-        ] else if (found) ...[
-          _kv(context, 'tx', tx.isEmpty ? '—' : tx),
-          _kv(context, 'hash', (bundle!['hash'] ?? '—').toString()),
-          _kv(context, 'seenCount', (bundle!['seenCount'] ?? '—').toString()),
-          _kv(context, 'firstSeenAt', (bundle!['firstSeenAt'] ?? '—').toString()),
-        ] else ...[
-          _kv(context, 'tx', tx.isEmpty ? '—' : tx),
-        ],
-      ]),
-    );
-  }
-
-  Widget _kv(BuildContext context, String k, String v) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(children: [
-        Expanded(child: Text(k, style: const TextStyle(fontWeight: FontWeight.w700))),
-        const SizedBox(width: 12),
-        Expanded(child: Text(v, textAlign: TextAlign.right, style: const TextStyle(fontFamily: 'monospace', fontSize: 12))),
-      ]),
-    );
-  }
-}
-
-class _InfoRow extends StatelessWidget {
-  final String label;
-  final String value;
-  const _InfoRow(this.label, this.value);
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(children: [
-        Expanded(child: Text(label, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13))),
-        Expanded(child: Text(value, textAlign: TextAlign.right, style: const TextStyle(fontSize: 13))),
-      ]),
-    );
-  }
-}
-
-class _ResultBadge extends StatelessWidget {
-  final VerifyResult result;
-  const _ResultBadge({required this.result});
-
-  @override
-  Widget build(BuildContext context) {
-    final verified = result.verified;
-    final badgeText = verified ? 'VERIFIED ✓' : 'NOT VERIFIED ✗';
-    final bgColor = verified ? Colors.green.shade100 : Colors.red.shade100;
-    final textColor = verified ? Colors.green.shade900 : Colors.red.shade900;
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: textColor.withOpacity(0.3), width: 2),
-      ),
-      child: Column(children: [
-        Text(
-          badgeText,
-          style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800, color: textColor),
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 8),
-        Text(result.message, style: TextStyle(color: textColor), textAlign: TextAlign.center),
-        if (result.chainHash != null && result.localHash != null) ...[
-          const SizedBox(height: 12),
-          Text(
-            'Chain: ${result.chainHash}',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(fontFamily: 'monospace', color: textColor.withOpacity(0.8)),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Local: ${result.localHash}',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(fontFamily: 'monospace', color: textColor.withOpacity(0.8)),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ]),
-    );
-  }
-}
-
-class _VerifyEntryScreen extends StatefulWidget {
-  const _VerifyEntryScreen();
-
-  @override
-  State<_VerifyEntryScreen> createState() => _VerifyEntryScreenState();
-}
-
-class _VerifyEntryScreenState extends State<_VerifyEntryScreen> {
-  final _formKey = GlobalKey<FormState>();
-  late TextEditingController _merchantController;
-  late TextEditingController _dateController;
-  late TextEditingController _currencyController;
-  late TextEditingController _subtotalController;
-  late TextEditingController _taxController;
-  late TextEditingController _totalController;
-
-  @override
-  void initState() {
-    super.initState();
-    _merchantController = TextEditingController();
-    _dateController = TextEditingController();
-    _currencyController = TextEditingController(text: 'CAD');
-    _subtotalController = TextEditingController();
-    _taxController = TextEditingController();
-    _totalController = TextEditingController();
-  }
-
-  @override
-  void dispose() {
-    _merchantController.dispose();
-    _dateController.dispose();
-    _currencyController.dispose();
-    _subtotalController.dispose();
-    _taxController.dispose();
-    _totalController.dispose();
-    super.dispose();
-  }
-
-  void _submit() {
-    if (!_formKey.currentState!.validate()) return;
-
-    final input = ReceiptInput(
-      merchant: _merchantController.text.trim(),
-      date: _dateController.text.trim(),
-      currency: _currencyController.text.trim().toUpperCase(),
-      subtotal: double.parse(_subtotalController.text),
-      tax: double.parse(_taxController.text),
-      total: double.parse(_totalController.text),
-    );
-
-    Navigator.pop(context, input);
+    if (picked != null) {
+      _dateController.text = DateFormat('yyyy-MM-dd').format(picked);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Enter Receipt for Verification')),
+      appBar: AppBar(title: const Text('Verify Receipt')),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(20),
         child: Form(
           key: _formKey,
-          child: Column(children: [
-            TextFormField(
-              controller: _merchantController,
-              decoration: const InputDecoration(labelText: 'Merchant *', border: OutlineInputBorder()),
-              validator: (v) => (v?.trim().isEmpty ?? true) ? 'Required' : null,
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _dateController,
-              decoration: const InputDecoration(labelText: 'Date *', border: OutlineInputBorder()),
-              validator: (v) => (v?.trim().isEmpty ?? true) ? 'Required' : null,
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _currencyController,
-              decoration: const InputDecoration(labelText: 'Currency *', border: OutlineInputBorder()),
-              validator: (v) => (v?.trim().isEmpty ?? true) ? 'Required' : null,
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _subtotalController,
-              decoration: const InputDecoration(labelText: 'Subtotal *', border: OutlineInputBorder()),
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              validator: (v) => double.tryParse(v ?? '') == null ? 'Invalid' : null,
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _taxController,
-              decoration: const InputDecoration(labelText: 'Tax *', border: OutlineInputBorder()),
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              validator: (v) => double.tryParse(v ?? '') == null ? 'Invalid' : null,
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _totalController,
-              decoration: const InputDecoration(labelText: 'Total *', border: OutlineInputBorder()),
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              validator: (v) => double.tryParse(v ?? '') == null ? 'Invalid' : null,
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: _submit,
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                minimumSize: const Size.fromHeight(50),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Card(
+                color: Colors.green.shade50,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.verified_user, color: Colors.green.shade700),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Step 1: Paste proof link or tx signature',
+                              style: TextStyle(color: Colors.green.shade900, fontSize: 13, fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Scan QR, paste deep link (vericeipt://...), or enter tx',
+                        style: TextStyle(fontSize: 11, color: Colors.green.shade700),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-              child: const Text('Done'),
-            ),
-          ]),
+              const SizedBox(height: 16),
+
+              TextFormField(
+                controller: _txController,
+                decoration: InputDecoration(
+                  labelText: 'Transaction Signature',
+                  prefixIcon: const Icon(Icons.link),
+                  suffixIcon: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(icon: const Icon(Icons.paste), onPressed: _pasteFromClipboard),
+                      IconButton(
+                        icon: const Icon(Icons.search),
+                        onPressed: _fetchingProof ? null : _fetchProof,
+                      ),
+                    ],
+                  ),
+                ),
+                validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+              ),
+
+              if (_fetchingProof) ...[
+                const SizedBox(height: 16),
+                const Center(child: CircularProgressIndicator()),
+              ],
+
+              if (_proofStatus == 'found' && _certifiedSnapshot != null) ...[
+                const SizedBox(height: 16),
+                Card(
+                  color: Colors.blue.shade50,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.check_circle, color: Colors.blue.shade700, size: 20),
+                            const SizedBox(width: 8),
+                            const Expanded(
+                              child: Text('Step 2: Local proof snapshot found ✓', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'This tx was certified on this server. You can auto-load the certified data or enter different values to test tampering detection.',
+                          style: TextStyle(fontSize: 11, color: Colors.blue.shade700),
+                        ),
+                        const SizedBox(height: 12),
+                        OutlinedButton.icon(
+                          onPressed: _autofillFromCertified,
+                          icon: const Icon(Icons.download),
+                          label: const Text('Use Certified Data'),
+                          style: OutlinedButton.styleFrom(foregroundColor: Colors.blue.shade700),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+
+              if (_proofStatus == 'not_found') ...[
+                const SizedBox(height: 16),
+                Card(
+                  color: Colors.orange.shade50,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        Icon(Icons.info_outline, color: Colors.orange.shade700, size: 20),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'No local proof found. Chain verification will still attempt.',
+                            style: TextStyle(fontSize: 12, color: Colors.orange.shade900),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+
+              const SizedBox(height: 24),
+              Text('Step 3: Enter current receipt data', style: Theme.of(context).textTheme.titleSmall),
+              const SizedBox(height: 12),
+
+              _field(_merchantController, 'Merchant', Icons.store),
+              const SizedBox(height: 16),
+              _dateField(),
+              const SizedBox(height: 16),
+              _currencyDropdown(),
+              const SizedBox(height: 16),
+              _numberField(_subtotalController, 'Subtotal'),
+              const SizedBox(height: 16),
+              _numberField(_taxController, 'Tax'),
+              const SizedBox(height: 16),
+              _numberField(_totalController, 'Total'),
+
+              const SizedBox(height: 32),
+
+              ElevatedButton.icon(
+                onPressed: _verifying ? null : _verify,
+                icon: _verifying
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.verified_user),
+                label: Text(_verifying ? 'Verifying...' : 'Verify on Blockchain'),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  backgroundColor: Theme.of(context).colorScheme.primary,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
-}
 
-class _QrScanPage extends StatelessWidget {
-  final void Function(String value) onScanned;
-  const _QrScanPage({required this.onScanned});
+  Widget _field(TextEditingController controller, String label, IconData icon) {
+    return TextFormField(
+      controller: controller,
+      decoration: InputDecoration(labelText: label, prefixIcon: Icon(icon)),
+      validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+    );
+  }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Scan QR Code')),
-      body: MobileScanner(
-        onDetect: (capture) {
-          final barcodes = capture.barcodes;
-          if (barcodes.isEmpty) return;
-          final raw = barcodes.first.rawValue;
-          if (raw == null || raw.isEmpty) return;
-          onScanned(raw);
-          Navigator.pop(context);
-        },
+  Widget _dateField() {
+    return TextFormField(
+      controller: _dateController,
+      readOnly: true,
+      decoration: InputDecoration(
+        labelText: 'Date',
+        prefixIcon: const Icon(Icons.calendar_today),
+        suffixIcon: IconButton(icon: const Icon(Icons.edit_calendar), onPressed: _pickDate),
       ),
+      onTap: _pickDate,
+      validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+    );
+  }
+
+  Widget _currencyDropdown() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        DropdownButtonFormField<String>(
+          value: _selectedCurrency,
+          decoration: const InputDecoration(labelText: 'Currency', prefixIcon: Icon(Icons.attach_money)),
+          items: _commonCurrencies.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+          onChanged: (v) => setState(() => _selectedCurrency = v ?? 'CAD'),
+        ),
+        if (_selectedCurrency == 'Custom') ...[
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: _customCurrencyController,
+            decoration: const InputDecoration(
+              labelText: 'Custom Currency Code',
+              hintText: 'e.g., JPY, CHF',
+              prefixIcon: Icon(Icons.edit),
+            ),
+            maxLength: 3,
+            textCapitalization: TextCapitalization.characters,
+            onChanged: (v) {
+              _customCurrencyController.text = v.toUpperCase();
+              _customCurrencyController.selection = TextSelection.fromPosition(
+                TextPosition(offset: _customCurrencyController.text.length),
+              );
+            },
+            validator: (v) {
+              if (v == null || v.trim().isEmpty) return 'Required';
+              if (v.length != 3) return 'Must be 3 letters';
+              return null;
+            },
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _numberField(TextEditingController controller, String label) {
+    return TextFormField(
+      controller: controller,
+      decoration: InputDecoration(labelText: label, prefixIcon: const Icon(Icons.receipt)),
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      validator: (v) {
+        if (v == null || v.trim().isEmpty) return 'Required';
+        if (double.tryParse(v) == null) return 'Invalid number';
+        return null;
+      },
     );
   }
 }

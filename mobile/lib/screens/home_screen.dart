@@ -1,12 +1,7 @@
-// lib/screens/home_screen.dart
-
 import 'package:flutter/material.dart';
-import '../models/receipt_analysis.dart';
 import '../models/receipt_input.dart';
-import 'result_screen.dart';
 import 'entry_screen.dart';
 import 'verify_screen.dart';
-import '../services/api_service.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -14,249 +9,261 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('DeepFakeReceipt'),
-        centerTitle: true,
-      ),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: 20),
-
-              // Logo / title
-              Icon(
-                Icons.receipt_long,
-                size: 64,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              const SizedBox(height: 16),
-
-              Text(
-                'Enter → Analyze → Certify → Verify',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Gemini checks consistency.\nSolana proves integrity.',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Colors.grey.shade700,
-                    ),
-                textAlign: TextAlign.center,
-              ),
-
-              const SizedBox(height: 24),
-
-              // 🔌 Backend health test button
-              ElevatedButton.icon(
-                onPressed: () async {
-                  final ok = await ApiService.checkHealth();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        ok ? '✅ Backend Connected' : '❌ Backend Down',
-                      ),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.cloud_done),
-                label: const Text('Test Backend Connection'),
-              ),
-
-              const SizedBox(height: 24),
-
-              // Info banner
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.amber.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.amber.shade200),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.edit_note, color: Colors.amber.shade800),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Manual entry mode (Gemini free tier limitation)',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Colors.amber.shade900,
-                            ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 24),
-
-              // Main actions
-              _PrimaryButton(
-                icon: Icons.edit_document,
-                label: 'Enter Receipt',
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const EntryScreen()),
-                  );
-                },
-              ),
-              const SizedBox(height: 16),
-              _PrimaryButton(
-                icon: Icons.verified_user,
-                label: 'Verify Proof',
-                outlined: true,
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const VerifyScreen()),
-                  );
-                },
-              ),
-
+              _buildHeader(context),
               const SizedBox(height: 32),
-              const Divider(),
-              const SizedBox(height: 16),
-
-              // Demo mode
-              Text(
-                'Demo Mode',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Pre-filled examples for testing',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Colors.grey.shade600,
-                    ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-
-              OutlinedButton.icon(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => ResultScreen(
-                        analysis: ReceiptAnalysis.demoLegit(),
-                        receiptInput: ReceiptInput.demoLegit(),
-                      ),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.check_circle, color: Colors.green),
-                label: const Text('Receipt A (Valid Math)'),
-              ),
-              const SizedBox(height: 12),
-
-              OutlinedButton.icon(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => ResultScreen(
-                        analysis: ReceiptAnalysis.demoTampered(),
-                        receiptInput: ReceiptInput.demoTampered(),
-                      ),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.warning, color: Colors.red),
-                label: const Text('Receipt B (Invalid Total)'),
-              ),
-              const SizedBox(height: 12),
-
-              OutlinedButton.icon(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => EntryScreen(
-                        initialInput: ReceiptInput.demoLegit(),
-                      ),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.edit, color: Colors.blue),
-                label: const Text('Edit Receipt A'),
-              ),
-
-              const Spacer(),
-
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.lightbulb,
-                        color: Colors.blue.shade700, size: 20),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Demo Mode ensures reliable presentation.',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              _buildQuickActions(context),
+              const SizedBox(height: 32),
+              _buildDemoCards(context),
+              const SizedBox(height: 24),
+              _buildFeatureList(context),
             ],
           ),
         ),
       ),
     );
   }
-}
 
-class _PrimaryButton extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onPressed;
-  final bool outlined;
-
-  const _PrimaryButton({
-    required this.icon,
-    required this.label,
-    required this.onPressed,
-    this.outlined = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    if (outlined) {
-      return OutlinedButton.icon(
-        onPressed: onPressed,
-        icon: Icon(icon, size: 24),
-        label: Text(label),
-        style: OutlinedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          textStyle:
-              const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+  Widget _buildHeader(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Theme.of(context).colorScheme.primary,
+                    Theme.of(context).colorScheme.primaryContainer,
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Icon(Icons.verified, color: Colors.white, size: 28),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              'Vericeipt',
+              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.5,
+                  ),
+            ),
+          ],
         ),
-      );
-    }
+        const SizedBox(height: 12),
+        Text(
+          'AI-powered receipt verification on Solana',
+          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                color: Colors.grey.shade600,
+              ),
+        ),
+      ],
+    );
+  }
 
-    return ElevatedButton.icon(
-      onPressed: onPressed,
-      icon: Icon(icon, size: 24),
-      label: Text(label),
-      style: ElevatedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        textStyle:
-            const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+  Widget _buildQuickActions(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: _actionCard(
+            context,
+            'Create Proof',
+            Icons.add_circle_outline,
+            Colors.blue,
+            () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const EntryScreen()),
+            ),
+          ),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: _actionCard(
+            context,
+            'Verify Receipt',
+            Icons.search,
+            Colors.green,
+            () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const VerifyScreen()),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _actionCard(
+    BuildContext context,
+    String label,
+    IconData icon,
+    Color color,
+    VoidCallback onTap,
+  ) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: color.withOpacity(0.3)),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, color: color, size: 32),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: color,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDemoCards(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Try Demo Receipts',
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+        ),
+        const SizedBox(height: 12),
+        _demoCard(
+          context,
+          'Legit Receipt',
+          'Campus Mart - \$14.11',
+          Icons.check_circle,
+          Colors.green,
+          () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => EntryScreen(initialInput: ReceiptInput.demoLegit()),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        _demoCard(
+          context,
+          'Tampered Receipt',
+          'Total edited to \$19.11',
+          Icons.warning,
+          Colors.orange,
+          () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => EntryScreen(initialInput: ReceiptInput.demoTampered()),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _demoCard(
+    BuildContext context,
+    String title,
+    String subtitle,
+    IconData icon,
+    Color color,
+    VoidCallback onTap,
+  ) {
+    return Card(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: color, size: 24),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, color: Colors.grey.shade400),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFeatureList(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'How It Works',
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+        ),
+        const SizedBox(height: 12),
+        _featureItem(Icons.analytics, 'AI fraud detection with Gemini'),
+        _featureItem(Icons.fingerprint, 'Tamper-proof Solana certification'),
+        _featureItem(Icons.sync, 'Duplicate claim detection'),
+        _featureItem(Icons.qr_code_scanner, 'QR code instant verification'),
+      ],
+    );
+  }
+
+  Widget _featureItem(IconData icon, String text) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: const Color(0xFF6366F1)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(text, style: const TextStyle(fontSize: 14)),
+          ),
+        ],
       ),
     );
   }
