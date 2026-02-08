@@ -1,0 +1,35 @@
+{
+  "name": "vericeipt-backend",
+  "version": "1.0.0",
+  "description": "AI-powered receipt verification with Solana blockchain certification",
+  "main": "src/server.js",
+  "scripts": {
+  "dev": "nodemon server.js",
+  "start": "node server.js",
+  "test": "node test.js"
+},
+  "keywords": [
+    "solana",
+    "gemini",
+    "ai",
+    "blockchain",
+    "receipt",
+    "verification"
+  ],
+  "author": "Vericeipt Team",
+  "license": "MIT",
+  "dependencies": {
+    "@google/generative-ai": "^0.21.0",
+    "@solana/web3.js": "^1.95.8",
+    "express": "^4.21.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "bs58": "^6.0.0",
+    "morgan": "^1.10.0",
+    "helmet": "^8.0.0",
+    "express-rate-limit": "^7.4.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.9"
+  }
+}

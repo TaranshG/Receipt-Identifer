@@ -1,0 +1,31 @@
+name: deepfake_receipt
+description: "Receipt verification and certification system using Gemini + Solana"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.10.8
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # QR Code generation and scanning
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^5.0.0
+  
+  # Icons
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  
+  # If you want to add sample receipt images later:
+  # assets:
+  #   - assets/receipt_a.jpg
+  #   - assets/receipt_b.jpg
