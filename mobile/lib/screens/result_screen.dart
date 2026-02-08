@@ -24,13 +24,19 @@ class ResultScreen extends StatefulWidget {
 class _ResultScreenState extends State<ResultScreen> {
   bool _certifying = false;
 
-  /// Builds canonical text locally (so we don't need analysis.canonicalText field).
+  /// Canonical text MUST be stable (this is what gets hashed and anchored).
+  /// Normalize merchant + currency to reduce trivial formatting mismatches.
   String _buildCanonicalText(ReceiptAnalysis a) {
     String money(double v) => v.toStringAsFixed(2);
+
+    final merchant = a.merchant.trim().toLowerCase();
+    final date = a.date.trim();
+    final currency = a.currency.trim().toUpperCase();
+
     return [
-      'merchant=${a.merchant.trim()}',
-      'date=${a.date.trim()}',
-      'currency=${a.currency.trim().toUpperCase()}',
+      'merchant=$merchant',
+      'date=$date',
+      'currency=$currency',
       'subtotal=${money(a.subtotal)}',
       'tax=${money(a.tax)}',
       'total=${money(a.total)}',
@@ -41,14 +47,20 @@ class _ResultScreenState extends State<ResultScreen> {
     setState(() => _certifying = true);
 
     try {
-      // Uses backend endpoint: POST /certify with canonicalText
       final canonicalText = _buildCanonicalText(widget.analysis);
+
+      // Call backend
       final certJson = await ApiService.certifyReceipt(canonicalText);
 
       final txSignature = (certJson['txSignature'] ?? '').toString();
       if (txSignature.isEmpty) {
         throw Exception('Missing txSignature from backend.');
       }
+
+      final explorerUrl = certJson['explorerUrl']?.toString();
+      final duplicate = certJson['duplicate'] == true;
+      final firstSeenTx = certJson['firstSeenTx']?.toString();
+      final firstSeenAt = certJson['firstSeenAt']?.toString();
 
       if (!mounted) return;
 
@@ -57,6 +69,10 @@ class _ResultScreenState extends State<ResultScreen> {
         MaterialPageRoute(
           builder: (_) => ProofScreen(
             txSignature: txSignature,
+            explorerUrl: explorerUrl,
+            duplicate: duplicate,
+            firstSeenTx: firstSeenTx,
+            firstSeenAt: firstSeenAt,
             receiptInput: widget.receiptInput,
           ),
         ),
@@ -73,6 +89,8 @@ class _ResultScreenState extends State<ResultScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isSuspicious = widget.analysis.verdict == 'SUSPICIOUS';
+
     return Scaffold(
       appBar: AppBar(title: const Text('Analysis')),
       body: SingleChildScrollView(
@@ -85,6 +103,26 @@ class _ResultScreenState extends State<ResultScreen> {
             _KeyFieldsCard(analysis: widget.analysis),
             const SizedBox(height: 16),
             _ReasonsCard(analysis: widget.analysis),
+
+            const SizedBox(height: 18),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isSuspicious ? Colors.red.shade50 : Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: isSuspicious ? Colors.red.shade200 : Colors.blue.shade100,
+                ),
+              ),
+              child: Text(
+                isSuspicious
+                    ? 'Recommendation: Do NOT reimburse until verified. Create proof and run verification.'
+                    : 'Recommendation: Create proof so any later edits are detectable.',
+                style: Theme.of(context).textTheme.bodySmall,
+                textAlign: TextAlign.center,
+              ),
+            ),
+
             const SizedBox(height: 24),
             ElevatedButton.icon(
               onPressed: _certifying ? null : _certifyOnSolana,
@@ -98,7 +136,7 @@ class _ResultScreenState extends State<ResultScreen> {
                       ),
                     )
                   : const Icon(Icons.verified),
-              label: Text(_certifying ? 'Certifying...' : 'Certify on Solana'),
+              label: Text(_certifying ? 'Creating proof...' : 'Create Tamper-Proof Record'),
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
               ),
@@ -108,19 +146,6 @@ class _ResultScreenState extends State<ResultScreen> {
               onPressed: _certifying ? null : () => Navigator.pop(context),
               icon: const Icon(Icons.edit),
               label: const Text('Edit Receipt'),
-            ),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.blue.shade50,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                'Certified = This receipt fingerprint is timestamped on Solana. Future verification can detect edits.',
-                style: Theme.of(context).textTheme.bodySmall,
-                textAlign: TextAlign.center,
-              ),
             ),
           ],
         ),
@@ -245,18 +270,15 @@ class _KeyFieldsCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('Extracted Fields',
-              style: Theme.of(context).textTheme.titleMedium),
+          Text('Extracted Fields', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           row('Merchant', analysis.merchant.isEmpty ? '—' : analysis.merchant),
           row('Date', analysis.date.isEmpty ? '—' : analysis.date),
           row('Currency', analysis.currency),
           const Divider(height: 18),
-          row('Subtotal',
-              '${analysis.currency} ${analysis.money(analysis.subtotal)}'),
+          row('Subtotal', '${analysis.currency} ${analysis.money(analysis.subtotal)}'),
           row('Tax', '${analysis.currency} ${analysis.money(analysis.tax)}'),
-          row('Total',
-              '${analysis.currency} ${analysis.money(analysis.total)}'),
+          row('Total', '${analysis.currency} ${analysis.money(analysis.total)}'),
         ],
       ),
     );
@@ -269,8 +291,7 @@ class _ReasonsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final reasons =
-        analysis.reasons.isEmpty ? ['No reasons provided.'] : analysis.reasons;
+    final reasons = analysis.reasons.isEmpty ? ['No reasons provided.'] : analysis.reasons;
 
     return Container(
       padding: const EdgeInsets.all(16),
