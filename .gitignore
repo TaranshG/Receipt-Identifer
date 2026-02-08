@@ -11,8 +11,12 @@
 .svn/
 .swiftpm/
 migrate_working_dir/
+
+#Backend
 .env
 **/.env
+backend/node_modules
+
 
 # IntelliJ related
 *.iml
@@ -34,6 +38,15 @@ migrate_working_dir/
 .pub/
 /build/
 /coverage/
+
+#Flutter Mobile
+mobile/build/
+mobile/.metadata
+mobile/android/
+mobile/ios/
+mobile/windows/
+mobile/macos/
+mobile/linux/
 
 # Symbolication related
 app.*.symbols
