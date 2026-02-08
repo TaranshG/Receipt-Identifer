@@ -7,7 +7,7 @@ Certiceipt creates a tamper-proof record for receipts by using AI to understand 
 - Blockchain Certification
 - Tamper Detection
 
-## API's Used
+## Services and APIs Used
 - Gemini
 - Solana
 
@@ -23,7 +23,7 @@ npm install
 npm run dev
 
 In the mobile on run:
--flutter start chrome 
+flutter start -d chrome 
 
 ## Authors
 Manas Narkar
