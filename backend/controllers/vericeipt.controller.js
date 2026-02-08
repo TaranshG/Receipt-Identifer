@@ -1,16 +1,10 @@
-/**
- * API Controllers
- * Handles all HTTP endpoints for Vericeipt backend
- */
+// backend/controllers/vericeipt.controller.js
 
-const GeminiService = require('../services/geminiService');
-const SolanaService = require('../services/solanaService');
+const GeminiService = require("../services/geminiService");
+const SolanaService = require("../services/solanaService");
+const ProofStore = require("../services/proofStore");
 
-// ✅ FIX: import the helpers you actually use
-const {
-  createCanonicalText,
-  computeHash,
-} = require('../utils/receiptUtils');
+const { createCanonicalText, computeHash } = require("../utils/receiptUtils");
 
 class VericeiptController {
   constructor(geminiApiKey, solanaRpcUrl, solanaPrivateKey) {
@@ -19,27 +13,63 @@ class VericeiptController {
   }
 
   /**
-   * ENDPOINT 1: POST /analyze
+   * Canonicalize text to eliminate "false mismatches"
+   * - merchant lower
+   * - currency upper
+   * - numeric fields forced to 2dp where possible
    */
+  _normalizeCanonicalText(text) {
+    if (!text || typeof text !== "string") return text;
+
+    const map = {};
+    for (const line of text.split("\n")) {
+      const idx = line.indexOf("=");
+      if (idx <= 0) continue;
+      const k = line.substring(0, idx).trim();
+      const v = line.substring(idx + 1).trim();
+      map[k] = v;
+    }
+
+    const norm = (k, v) => {
+      if (v == null) return "";
+      if (k === "merchant") return String(v).trim().toLowerCase();
+      if (k === "currency") return String(v).trim().toUpperCase();
+      if (["subtotal", "tax", "total"].includes(k)) {
+        const n = Number(String(v).trim());
+        if (Number.isFinite(n)) return n.toFixed(2);
+        return String(v).trim();
+      }
+      return String(v).trim();
+    };
+
+    const orderedKeys = ["merchant", "date", "currency", "subtotal", "tax", "total"];
+    const out = [];
+    for (const k of orderedKeys) {
+      if (map[k] !== undefined) out.push(`${k}=${norm(k, map[k])}`);
+    }
+
+    // Preserve any extra fields deterministically (rare, but safe)
+    const extras = Object.keys(map)
+      .filter((k) => !orderedKeys.includes(k))
+      .sort();
+    for (const k of extras) out.push(`${k}=${norm(k, map[k])}`);
+
+    return out.join("\n");
+  }
+
+  // POST /analyze
   async analyzeReceipt(req, res) {
     try {
-      const { imageBase64, merchant, date, currency, subtotal, tax, total } =
-        req.body;
+      const { imageBase64, merchant, date, currency, subtotal, tax, total } = req.body;
 
-      // Validate input
       if (!imageBase64 && !merchant) {
         return res.status(400).json({
           success: false,
-          error:
-            'Either imageBase64 or manual receipt data (merchant, date, etc.) is required',
+          error: "Either imageBase64 or manual receipt data is required",
         });
       }
 
-      console.log('📸 Analyzing receipt...');
-
       let analysis;
-
-      // Route to appropriate analysis method
       if (imageBase64) {
         analysis = await this.geminiService.analyzeReceipt(imageBase64);
       } else {
@@ -47,14 +77,10 @@ class VericeiptController {
         analysis = await this.geminiService.analyzeReceipt(manualData);
       }
 
-      // Generate canonical text and hash for convenience
-      const canonicalText = createCanonicalText(analysis);
+      // create canonical, normalize it, hash it
+      const canonicalRaw = createCanonicalText(analysis);
+      const canonicalText = this._normalizeCanonicalText(canonicalRaw);
       const hash = computeHash(canonicalText);
-
-      console.log('✅ Analysis complete');
-      console.log(`   Verdict: ${analysis.verdict}`);
-      console.log(`   Fraud Score: ${analysis.fraud_score}`);
-      console.log(`   Hash: ${hash.substring(0, 16)}...`);
 
       return res.json({
         success: true,
@@ -64,76 +90,80 @@ class VericeiptController {
         timestamp: new Date().toISOString(),
       });
     } catch (error) {
-      console.error('❌ Analysis error:', error);
+      console.error("❌ Analysis error:", error);
       return res.status(500).json({
         success: false,
         error: error.message,
-        details:
-          'Failed to analyze receipt. Please check the image quality or manual data.',
       });
     }
   }
 
-  /**
-   * ENDPOINT 2: POST /certify
-   */
+  // POST /certify
   async certifyReceipt(req, res) {
     try {
-      let { canonicalText, hash } = req.body;
+      let { canonicalText, hash, analysisSummary } = req.body;
 
       if (!canonicalText && !hash) {
         return res.status(400).json({
           success: false,
-          error: 'Either canonicalText or hash is required',
+          error: "Either canonicalText or hash is required",
         });
       }
 
-      if (canonicalText && !hash) {
-        hash = computeHash(canonicalText);
-      }
+      // Normalize canonicalText before hashing/storing
+      if (canonicalText) canonicalText = this._normalizeCanonicalText(canonicalText);
+
+      if (canonicalText && !hash) hash = computeHash(canonicalText);
 
       if (!/^[a-f0-9]{64}$/i.test(hash)) {
         return res.status(400).json({
           success: false,
-          error: 'Invalid hash format - must be 64-character hex string',
+          error: "Invalid hash format - must be 64-character hex string",
         });
       }
 
-      console.log('🔐 Certifying receipt on Solana...');
-      console.log(`   Hash: ${hash.substring(0, 16)}...`);
-
-      const result = await this.solanaService.certifyHash(hash, {
-        source: 'vericeipt-api',
+      // 1) certify on Solana
+      const chain = await this.solanaService.certifyHash(hash, {
+        source: "vericeipt-api",
         certified_at: new Date().toISOString(),
       });
 
-      console.log('✅ Certification successful');
-      console.log(`   Transaction: ${result.txSignature}`);
+      // 2) store canonical text off-chain for forensics + duplicate detection
+      const storeResult = ProofStore.upsertProof({
+        hash,
+        txSignature: chain.txSignature,
+        canonicalText: canonicalText || null,
+        analysisSummary: analysisSummary || {},
+      });
 
       return res.json({
         success: true,
-        txSignature: result.txSignature,
-        chainHash: result.chainHash,
-        timestamp: result.timestamp,
-        explorerUrl: result.explorerUrl,
-        walletAddress: result.walletAddress,
-        message: '✅ Receipt certified successfully on Solana blockchain',
-        proofId: result.txSignature,
+        txSignature: chain.txSignature,
+        chainHash: chain.chainHash,
+        timestamp: chain.timestamp,
+        explorerUrl: chain.explorerUrl,
+        walletAddress: chain.walletAddress,
+
+        // WOW fields
+        duplicate: storeResult.duplicate,
+        firstSeenTx: storeResult.firstSeenTx,
+        firstSeenAt: storeResult.firstSeenAt,
+        seenCount: storeResult.seenCount,
+
+        message: storeResult.duplicate
+          ? "⚠️ Certified, but this receipt hash was seen before (possible duplicate claim)"
+          : "✅ Receipt certified successfully on Solana",
       });
     } catch (error) {
-      console.error('❌ Certification error:', error);
+      console.error("❌ Certification error:", error);
       return res.status(500).json({
         success: false,
         error: error.message,
-        details:
-          'Failed to certify receipt on blockchain. Please check your Solana configuration.',
       });
     }
   }
 
-  /**
-   * ENDPOINT 3: POST /verify
-   */
+  // POST /verify
   async verifyReceipt(req, res) {
     try {
       let { canonicalText, hash, txSignature } = req.body;
@@ -141,74 +171,77 @@ class VericeiptController {
       if (!txSignature) {
         return res.status(400).json({
           success: false,
-          error: 'txSignature (transaction signature) is required',
+          error: "txSignature is required",
         });
       }
 
       if (!canonicalText && !hash) {
         return res.status(400).json({
           success: false,
-          error: 'Either canonicalText or hash is required',
+          error: "Either canonicalText or hash is required",
         });
       }
 
-      if (canonicalText && !hash) {
-        hash = computeHash(canonicalText);
+      // Normalize canonicalText BEFORE hashing so user formatting doesn't break verification
+      if (canonicalText) canonicalText = this._normalizeCanonicalText(canonicalText);
+
+      if (canonicalText && !hash) hash = computeHash(canonicalText);
+
+      const chainResult = await this.solanaService.verifyHash(txSignature, hash);
+
+      // Look up what was originally certified (for forensic diff)
+      const storedByTx = ProofStore.getByTx(txSignature);
+      let chainCanonicalText = storedByTx?.canonicalText || null;
+
+      // If missing, try by chain hash
+      if (!chainCanonicalText && chainResult.chainHash) {
+        const storedByHash = ProofStore.getByHash(chainResult.chainHash);
+        chainCanonicalText = storedByHash?.canonicalText || null;
       }
 
-      console.log('🔍 Verifying receipt...');
-      console.log(`   Transaction: ${txSignature}`);
-      console.log(`   Local Hash: ${hash.substring(0, 16)}...`);
+      // Normalize the stored canonical too (just in case early versions stored raw)
+      if (chainCanonicalText) chainCanonicalText = this._normalizeCanonicalText(chainCanonicalText);
 
-      const result = await this.solanaService.verifyHash(txSignature, hash);
-
-      console.log(result.verified ? '✅ Verification PASSED' : '❌ Verification FAILED');
+      // Ensure explorerUrl exists even if verifyHash returns an error path
+      const explorerUrl =
+        chainResult.explorerUrl ||
+        (this.solanaService._explorerTxUrl ? this.solanaService._explorerTxUrl(txSignature) : null);
 
       return res.json({
         success: true,
-        ...result,
+        ...chainResult,
+        explorerUrl,
+
+        // WOW fields for UI forensic replay
+        chainCanonicalText,
+        localCanonicalText: canonicalText || null,
       });
     } catch (error) {
-      console.error('❌ Verification error:', error);
+      console.error("❌ Verification error:", error);
       return res.status(500).json({
         success: false,
         verified: false,
         error: error.message,
-        details:
-          'Failed to verify receipt. Please check the transaction signature.',
       });
     }
   }
 
-  /**
-   * BONUS ENDPOINT: GET /health
-   */
+  // GET /health
   async healthCheck(req, res) {
     try {
-      console.log('🏥 Running health check...');
-
       const solanaHealth = await this.solanaService.healthCheck();
-
       const geminiHealth = {
         connected: !!this.geminiService.model,
-        model: 'gemini-1.5-flash',
+        model: "gemini-1.5-flash",
       };
-
-      const overallHealth = solanaHealth.connected && geminiHealth.connected;
 
       return res.json({
         success: true,
-        healthy: overallHealth,
+        healthy: solanaHealth.connected && geminiHealth.connected,
         timestamp: new Date().toISOString(),
-        services: {
-          gemini: geminiHealth,
-          solana: solanaHealth,
-        },
-        version: '1.0.0',
-        message: overallHealth ? '✅ All systems operational' : '⚠️ Some systems are down',
+        services: { gemini: geminiHealth, solana: solanaHealth },
       });
     } catch (error) {
-      console.error('❌ Health check error:', error);
       return res.status(503).json({
         success: false,
         healthy: false,
@@ -217,73 +250,12 @@ class VericeiptController {
     }
   }
 
-  /**
-   * BONUS ENDPOINT: POST /analyze-and-certify
-   */
+  // POST /analyze-and-certify (not used for demo)
   async analyzeAndCertify(req, res) {
-    try {
-      const { imageBase64, merchant, date, currency, subtotal, tax, total, autoCertify } =
-        req.body;
-
-      console.log('📸 Step 1: Analyzing receipt...');
-
-      let analysis;
-      if (imageBase64) {
-        analysis = await this.geminiService.analyzeReceipt(imageBase64);
-      } else {
-        const manualData = { merchant, date, currency, subtotal, tax, total };
-        analysis = await this.geminiService.analyzeReceipt(manualData);
-      }
-
-      const canonicalText = createCanonicalText(analysis);
-      const hash = computeHash(canonicalText);
-
-      console.log(`   Verdict: ${analysis.verdict}, Fraud Score: ${analysis.fraud_score}`);
-
-      let certification = null;
-
-      if (autoCertify !== false && analysis.verdict === 'LIKELY_REAL' && analysis.fraud_score < 30) {
-        console.log('🔐 Step 2: Auto-certifying receipt...');
-
-        try {
-          certification = await this.solanaService.certifyHash(hash, {
-            source: 'vericeipt-auto-certify',
-            analysis: {
-              verdict: analysis.verdict,
-              fraud_score: analysis.fraud_score,
-            },
-          });
-          console.log('✅ Auto-certification successful');
-        } catch (certError) {
-          console.error('❌ Auto-certification failed:', certError.message);
-        }
-      } else {
-        console.log('⏭️ Skipping auto-certification (fraud_score too high or not LIKELY_REAL)');
-      }
-
-      return res.json({
-        success: true,
-        analysis: {
-          ...analysis,
-          canonicalText,
-          hash,
-        },
-        certification: certification || {
-          certified: false,
-          reason:
-            analysis.fraud_score >= 30
-              ? 'Fraud score too high for auto-certification'
-              : 'Verdict is not LIKELY_REAL',
-        },
-        timestamp: new Date().toISOString(),
-      });
-    } catch (error) {
-      console.error('❌ Analyze-and-certify error:', error);
-      return res.status(500).json({
-        success: false,
-        error: error.message,
-      });
-    }
+    return res.status(501).json({
+      success: false,
+      error: "Not used for the hackathon demo. Use /analyze then /certify.",
+    });
   }
 }
 

@@ -1,0 +1,23 @@
+{
+  "byHash": {
+    "edb0002893a850791e9a43189891ef9758a3fd2635f6fc6744acd2be344a0517": {
+      "hash": "edb0002893a850791e9a43189891ef9758a3fd2635f6fc6744acd2be344a0517",
+      "canonicalText": "merchant=campus\ndate=2027-12-12\ncurrency=CAD\nsubtotal=12.00\ntax=1.32\ntotal=13.00",
+      "analysisSummary": {},
+      "createdAt": "2026-02-08T06:27:24.519Z",
+      "lastSeenAt": "2026-02-08T06:27:24.519Z",
+      "txSignature": "5JUHFJfimWzjcJuuosV99DPS2drdFVJaHo4DDvGQjJFQJfugb2dCABLCtVCVkbLsBtHMcGrSudUVZ62DGMU7jtLz",
+      "firstSeenTx": "5JUHFJfimWzjcJuuosV99DPS2drdFVJaHo4DDvGQjJFQJfugb2dCABLCtVCVkbLsBtHMcGrSudUVZ62DGMU7jtLz",
+      "firstSeenAt": "2026-02-08T06:27:24.519Z",
+      "seenCount": 1
+    }
+  },
+  "byTx": {
+    "5JUHFJfimWzjcJuuosV99DPS2drdFVJaHo4DDvGQjJFQJfugb2dCABLCtVCVkbLsBtHMcGrSudUVZ62DGMU7jtLz": {
+      "txSignature": "5JUHFJfimWzjcJuuosV99DPS2drdFVJaHo4DDvGQjJFQJfugb2dCABLCtVCVkbLsBtHMcGrSudUVZ62DGMU7jtLz",
+      "hash": "edb0002893a850791e9a43189891ef9758a3fd2635f6fc6744acd2be344a0517",
+      "canonicalText": "merchant=campus\ndate=2027-12-12\ncurrency=CAD\nsubtotal=12.00\ntax=1.32\ntotal=13.00",
+      "createdAt": "2026-02-08T06:27:24.519Z"
+    }
+  }
+}
