@@ -12,7 +12,18 @@ Certiceipt creates a tamper-proof record for receipts by using AI to understand 
 - Solana
 
 ## How to Run
+In one terminal run:
+cd backend 
 
+In another terminal run:
+cd mobile 
+
+In the backend terminal run:
+npm install 
+npm run dev
+
+In the mobile on run:
+-flutter start chrome 
 
 ## Authors
 Manas Narkar
