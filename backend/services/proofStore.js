@@ -1,15 +1,3 @@
-// backend/services/proofStore.js
-/**
- * ProofStore (hackathon-grade, demo-safe)
- *
- * Solana stores ONLY a hash in a memo (tamper-evident anchor).
- * This store keeps the original canonical text + metadata for:
- *  - Forensic diff (show exactly what changed)
- *  - Duplicate/reuse detection (same receipt claimed twice)
- *
- * Storage: small JSON file on disk (no DB setup needed).
- */
-
 const fs = require("fs");
 const path = require("path");
 
@@ -53,19 +41,13 @@ function normTx(tx) {
   return String(tx || "").trim();
 }
 
-/**
- * Upsert proof record.
- * @returns { duplicate:boolean, firstSeenTx:string|null, firstSeenAt:string|null, seenCount:number }
- */
 function upsertProof({ hash, txSignature, canonicalText = null, analysisSummary = {} }) {
   const h = normHash(hash);
   const tx = normTx(txSignature);
-
-  if (!h || !tx) throw new Error("hash and txSignature are required");
+  if (!h || !tx) throw new Error("hash and txSignature required");
 
   const db = readDb();
   const existing = db.byHash[h] || null;
-
   const duplicate = !!existing;
   const createdAt = nowIso();
 
@@ -76,23 +58,15 @@ function upsertProof({ hash, txSignature, canonicalText = null, analysisSummary 
   db.byHash[h] = {
     hash: h,
     canonicalText: canonicalText || existing?.canonicalText || null,
-    analysisSummary:
-      Object.keys(analysisSummary || {}).length
-        ? analysisSummary
-        : existing?.analysisSummary || {},
+    analysisSummary: Object.keys(analysisSummary || {}).length ? analysisSummary : existing?.analysisSummary || {},
     createdAt: existing?.createdAt || createdAt,
     lastSeenAt: createdAt,
-
-    // Most recent tx
     txSignature: tx,
-
-    // Duplicate tracking
     firstSeenTx,
     firstSeenAt,
     seenCount,
   };
 
-  // Only write byTx if not present (avoid overwriting older data accidentally)
   if (!db.byTx[tx]) {
     db.byTx[tx] = {
       txSignature: tx,
@@ -103,7 +77,6 @@ function upsertProof({ hash, txSignature, canonicalText = null, analysisSummary 
   }
 
   writeDb(db);
-
   return { duplicate, firstSeenTx, firstSeenAt, seenCount };
 }
 
@@ -119,10 +92,6 @@ function getByHash(hash) {
   return db.byHash[h] || null;
 }
 
-/**
- * Nice for a GET /proof/:tx endpoint
- * Returns merged view of proof data (tx -> hash -> analytics).
- */
 function getProofBundleByTx(txSignature) {
   const txRow = getByTx(txSignature);
   if (!txRow) return null;
@@ -142,9 +111,20 @@ function getProofBundleByTx(txSignature) {
   };
 }
 
+function getAllProofs() {
+  const db = readDb();
+  const all = Object.values(db.byHash).sort((a, b) => {
+    const ta = new Date(a.lastSeenAt || 0).getTime();
+    const tb = new Date(b.lastSeenAt || 0).getTime();
+    return tb - ta;
+  });
+  return all;
+}
+
 module.exports = {
   upsertProof,
   getByTx,
   getByHash,
   getProofBundleByTx,
+  getAllProofs,
 };

@@ -14,12 +14,11 @@ class GeminiService {
 
     this.genAI = new GoogleGenerativeAI(apiKey);
 
-    // ✅ FIX: gemini-1.5-flash is retired -> use a supported model.
-    // If you ever get a 404 again, swap to another currently supported model.
+    // Use a supported model.
     this.model = this.genAI.getGenerativeModel({
       model: 'gemini-2.5-flash',
       generationConfig: {
-        temperature: 0.1, // Low temperature for more consistent outputs
+        temperature: 0.1,
         topP: 0.8,
         topK: 20,
         maxOutputTokens: 2048,
@@ -29,7 +28,6 @@ class GeminiService {
 
   /**
    * The core prompt engineering for receipt analysis
-   * This is CRITICAL for hackathon success - we want structured, reliable outputs
    */
   getAnalysisPrompt() {
     return `You are an expert receipt verification AI. Analyze this receipt image OR manual data and extract structured information.
@@ -88,20 +86,131 @@ Now analyze the receipt:`;
   }
 
   /**
+   * Helper: remove markdown fences and trim
+   */
+  _stripFences(text) {
+    if (!text) return '';
+    return String(text)
+      .replace(/```json\s*/gi, '')
+      .replace(/```\s*/g, '')
+      .trim();
+  }
+
+  /**
+   * Helper: extract first balanced JSON object from text.
+   * Robust against extra text before/after JSON.
+   * Handles braces inside strings.
+   */
+  _extractFirstJsonObject(text) {
+    const s = String(text || '');
+    const start = s.indexOf('{');
+    if (start === -1) return null;
+
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+
+    for (let i = start; i < s.length; i++) {
+      const ch = s[i];
+
+      if (inString) {
+        if (escape) {
+          escape = false;
+          continue;
+        }
+        if (ch === '\\') {
+          escape = true;
+          continue;
+        }
+        if (ch === '"') {
+          inString = false;
+          continue;
+        }
+        continue;
+      } else {
+        if (ch === '"') {
+          inString = true;
+          continue;
+        }
+        if (ch === '{') depth++;
+        if (ch === '}') depth--;
+
+        if (depth === 0) {
+          // balanced object end
+          return s.slice(start, i + 1);
+        }
+      }
+    }
+
+    // Not balanced (likely truncated)
+    return s.slice(start); // return from first { to end as "candidate"
+  }
+
+  /**
+   * Helper: attempt to repair truncated JSON by appending missing braces.
+   * This won't fix *all* truncations, but it fixes the common “missing closing }” case.
+   */
+  _tryRepairAndParse(candidate) {
+    if (!candidate) return null;
+
+    let c = candidate.trim();
+
+    // quick cleanup: remove trailing markdown fences just in case
+    c = this._stripFences(c);
+
+    // Try normal parse first
+    try {
+      return JSON.parse(c);
+    } catch (_) {}
+
+    // Try appending a few closing braces if JSON looks cut off
+    // (common when model output truncates near the end)
+    for (let i = 0; i < 6; i++) {
+      c += '}';
+      try {
+        return JSON.parse(c);
+      } catch (_) {}
+    }
+
+    return null;
+  }
+
+  /**
+   * Creates a safe fallback result so the API never hard-crashes.
+   */
+  _fallbackUnreadable(rawText, reason) {
+    const snippet = String(rawText || '').slice(0, 600);
+    return {
+      merchant: '',
+      date: '',
+      currency: 'CAD',
+      subtotal: 0,
+      tax: 0,
+      total: 0,
+      verdict: 'UNREADABLE',
+      fraud_score: 95,
+      reasons: [
+        'Could not reliably parse AI output.',
+        reason || 'AI output was malformed or truncated.',
+        'Try a clearer photo or manual entry.',
+      ],
+      confidence: 0.2,
+      // keep debug info for logs / optional UI (safe snippet only)
+      _rawSnippet: snippet,
+    };
+  }
+
+  /**
    * Analyzes a receipt from base64 image
-   *
-   * @param {string} imageBase64 - Base64 encoded image
-   * @returns {Promise<Object>} Analysis results
    */
   async analyzeImage(imageBase64) {
     try {
-      // Remove data URI prefix if present
       const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
 
       const imagePart = {
         inlineData: {
           data: base64Data,
-          mimeType: 'image/jpeg', // Assume JPEG, could detect dynamically
+          mimeType: 'image/jpeg',
         },
       };
 
@@ -114,16 +223,13 @@ Now analyze the receipt:`;
       return this.parseGeminiResponse(text);
     } catch (error) {
       console.error('Gemini image analysis error:', error);
-      throw new Error(`Failed to analyze receipt image: ${error.message}`);
+      // Return safe payload instead of throwing (demo-safe)
+      return this._fallbackUnreadable(null, `Gemini image analyze failed: ${error.message}`);
     }
   }
 
   /**
    * Analyzes manually entered receipt data
-   * This is faster and more reliable for text-based input
-   *
-   * @param {Object} receiptData - Manual receipt data
-   * @returns {Promise<Object>} Analysis results
    */
   async analyzeManualData(receiptData) {
     try {
@@ -146,93 +252,108 @@ Analyze this data and provide your structured JSON response.`;
       return this.parseGeminiResponse(text);
     } catch (error) {
       console.error('Gemini manual data analysis error:', error);
-      throw new Error(`Failed to analyze receipt data: ${error.message}`);
+      return this._fallbackUnreadable(null, `Gemini manual analyze failed: ${error.message}`);
     }
   }
 
   /**
    * Parses Gemini's text response into structured JSON
-   * Handles edge cases where Gemini adds extra text
+   * Now tolerant to:
+   * - markdown fences
+   * - extra text
+   * - truncated JSON (missing closing braces)
+   * - occasional weird formatting
    *
-   * @param {string} text - Raw Gemini response
-   * @returns {Object} Parsed receipt data
+   * IMPORTANT: does NOT throw. Returns UNREADABLE payload on failure.
    */
   parseGeminiResponse(text) {
+    const raw = String(text || '');
     try {
-      // Extract JSON from response (Gemini sometimes wraps it in markdown)
-      let jsonText = text.trim();
+      const cleaned = this._stripFences(raw);
 
-      // Remove markdown code blocks if present
-      jsonText = jsonText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
-
-      // Find JSON object boundaries
-      const startIdx = jsonText.indexOf('{');
-      const endIdx = jsonText.lastIndexOf('}');
-
-      if (startIdx === -1 || endIdx === -1) {
-        throw new Error('No JSON object found in response');
+      // Extract first JSON object (or candidate if truncated)
+      const candidate = this._extractFirstJsonObject(cleaned);
+      if (!candidate) {
+        console.error('Failed to parse Gemini response (no JSON candidate):', raw);
+        return this._fallbackUnreadable(raw, 'No JSON object found in model output.');
       }
 
-      jsonText = jsonText.substring(startIdx, endIdx + 1);
-
-      const parsed = JSON.parse(jsonText);
-
-      // Validate required fields
-      const required = ['merchant', 'total', 'verdict', 'fraud_score', 'reasons'];
-      for (const field of required) {
-        if (!(field in parsed)) {
-          throw new Error(`Missing required field: ${field}`);
-        }
+      // Parse or repair
+      const parsed = this._tryRepairAndParse(candidate);
+      if (!parsed || typeof parsed !== 'object') {
+        console.error('Failed to parse Gemini response (invalid JSON):', raw);
+        return this._fallbackUnreadable(raw, 'Model returned invalid or truncated JSON.');
       }
 
-      // Ensure numeric fields are numbers
-      parsed.subtotal = parseFloat(parsed.subtotal || 0);
-      parsed.tax = parseFloat(parsed.tax || 0);
-      parsed.total = parseFloat(parsed.total || 0);
-      parsed.fraud_score = parseInt(parsed.fraud_score || 50, 10);
-      parsed.confidence = parseFloat(parsed.confidence || 0.5);
+      // Fill defaults / normalize
+      const out = { ...parsed };
 
-      // Normalize verdict
+      out.merchant = String(out.merchant || '').trim();
+      out.date = String(out.date || '').trim();
+      out.currency = String(out.currency || 'CAD').trim().toUpperCase();
+
+      out.subtotal = Number.parseFloat(out.subtotal ?? 0) || 0;
+      out.tax = Number.parseFloat(out.tax ?? 0) || 0;
+      out.total = Number.parseFloat(out.total ?? 0) || 0;
+
+      out.fraud_score = Number.parseInt(out.fraud_score ?? 50, 10);
+      if (!Number.isFinite(out.fraud_score)) out.fraud_score = 50;
+      out.fraud_score = Math.max(0, Math.min(100, out.fraud_score));
+
+      out.confidence = Number.parseFloat(out.confidence ?? 0.5);
+      if (!Number.isFinite(out.confidence)) out.confidence = 0.5;
+      out.confidence = Math.max(0, Math.min(1, out.confidence));
+
       const validVerdicts = ['LIKELY_REAL', 'SUSPICIOUS', 'LIKELY_FAKE', 'UNREADABLE'];
-      if (!validVerdicts.includes(parsed.verdict)) {
-        parsed.verdict = 'SUSPICIOUS';
+      out.verdict = String(out.verdict || 'SUSPICIOUS').trim().toUpperCase();
+      if (!validVerdicts.includes(out.verdict)) out.verdict = 'SUSPICIOUS';
+
+      if (!Array.isArray(out.reasons)) {
+        out.reasons = out.reasons ? [String(out.reasons)] : [];
+      }
+      out.reasons = out.reasons.map((r) => String(r)).filter(Boolean);
+      if (out.reasons.length === 0) out.reasons = ['No specific reasons provided.'];
+
+      // If missing critical fields, degrade to UNREADABLE instead of throwing
+      if (!out.total || !out.verdict || !Number.isFinite(out.fraud_score)) {
+        return this._fallbackUnreadable(raw, 'Missing critical fields in model output.');
       }
 
-      // Ensure reasons is an array
-      if (!Array.isArray(parsed.reasons)) {
-        parsed.reasons = [parsed.reasons || 'No specific reasons provided'];
-      }
-
-      return parsed;
+      return out;
     } catch (error) {
-      console.error('Failed to parse Gemini response:', text);
-      throw new Error(`Invalid Gemini response format: ${error.message}`);
+      console.error('Failed to parse Gemini response (exception):', raw);
+      return this._fallbackUnreadable(raw, `Parser exception: ${error.message}`);
     }
   }
 
   /**
    * Enhanced analysis that combines Gemini AI with local validation
-   * This improves accuracy and provides better fraud detection
-   *
-   * @param {string|Object} input - Either base64 image or receipt data object
-   * @returns {Promise<Object>} Enhanced analysis results
    */
   async analyzeReceipt(input) {
     let geminiResult;
 
-    // Determine if input is image or manual data
     if (typeof input === 'string') {
       geminiResult = await this.analyzeImage(input);
     } else {
       geminiResult = await this.analyzeManualData(input);
     }
 
-    // Run local validation checks
+    // If UNREADABLE, don't run strict validators that assume fields exist
+    if (geminiResult.verdict === 'UNREADABLE') {
+      return {
+        ...geminiResult,
+        validation: {
+          isValid: false,
+          issues: ['UNREADABLE: could not confidently extract receipt fields.'],
+          warnings: [],
+        },
+      };
+    }
+
     const localValidation = validateReceipt(geminiResult);
 
-    // Adjust fraud score based on local validation
     let adjustedFraudScore = geminiResult.fraud_score;
-    const enhancedReasons = [...geminiResult.reasons];
+    const enhancedReasons = [...(geminiResult.reasons || [])];
 
     if (!localValidation.isValid) {
       adjustedFraudScore = Math.min(100, adjustedFraudScore + 30);
@@ -244,7 +365,6 @@ Analyze this data and provide your structured JSON response.`;
       enhancedReasons.push(...localValidation.warnings.map((warn) => `⚠️ ${warn}`));
     }
 
-    // Update verdict based on adjusted score
     let verdict = geminiResult.verdict;
     if (adjustedFraudScore >= 70) {
       verdict = 'LIKELY_FAKE';

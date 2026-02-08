@@ -1,10 +1,3 @@
-/**
- * Solana Service
- * Handles blockchain interactions for receipt certification and verification
- * 
- * This is the CORE innovation - we use Solana as a public notary for receipt integrity
- */
-
 const {
   Connection,
   Keypair,
@@ -25,7 +18,6 @@ class SolanaService {
     
     this.connection = new Connection(rpcUrl, 'confirmed');
     
-    // Initialize wallet from private key
     if (privateKeyBase58) {
       try {
         const privateKeyBytes = bs58.decode(privateKeyBase58);
@@ -41,10 +33,6 @@ class SolanaService {
     }
   }
 
-  /**
-   * Get wallet balance in SOL
-   * Useful for monitoring and preventing failed transactions
-   */
   async getBalance() {
     try {
       const balance = await this.connection.getBalance(this.wallet.publicKey);
@@ -55,10 +43,6 @@ class SolanaService {
     }
   }
 
-  /**
-   * Request airdrop on devnet (for testing)
-   * This is useful during hackathon demos
-   */
   async requestAirdrop(amount = 1) {
     try {
       console.log(`Requesting ${amount} SOL airdrop...`);
@@ -76,29 +60,12 @@ class SolanaService {
     }
   }
 
-  /**
-   * CORE FUNCTION: Certify a receipt hash on Solana blockchain
-   * 
-   * How it works:
-   * 1. Takes a hash (SHA-256 hex string)
-   * 2. Creates a Memo transaction with the hash as the memo
-   * 3. Sends transaction to Solana blockchain
-   * 4. Returns the transaction signature (proof ID)
-   * 
-   * This creates an immutable, timestamped record that can be verified later
-   * 
-   * @param {string} hash - SHA-256 hash in hex format
-   * @param {Object} metadata - Optional metadata (not stored on-chain)
-   * @returns {Promise<Object>} Transaction result with signature
-   */
   async certifyHash(hash, metadata = {}) {
     try {
-      // Validate hash format
       if (!hash || !/^[a-f0-9]{64}$/i.test(hash)) {
         throw new Error('Invalid hash format - must be 64-character hex string');
       }
 
-      // Check balance before attempting transaction
       const balance = await this.getBalance();
       if (balance < 0.001) {
         console.warn('⚠️ Low balance detected, attempting airdrop...');
@@ -109,8 +76,6 @@ class SolanaService {
         }
       }
 
-      // Create memo instruction with hash
-      // Format: "VERICEIPT:v1:HASH:<hash>"
       const memoData = `VERICEIPT:v1:HASH:${hash}`;
       
       const memoInstruction = new TransactionInstruction({
@@ -123,15 +88,12 @@ class SolanaService {
         data: Buffer.from(memoData, 'utf8')
       });
 
-      // Create transaction
       const transaction = new Transaction().add(memoInstruction);
       
-      // Get recent blockhash
       const { blockhash } = await this.connection.getLatestBlockhash();
       transaction.recentBlockhash = blockhash;
       transaction.feePayer = this.wallet.publicKey;
 
-      // Sign and send transaction
       console.log('📤 Sending certification transaction to Solana...');
       const signature = await sendAndConfirmTransaction(
         this.connection,
@@ -145,24 +107,24 @@ class SolanaService {
 
       console.log('✅ Receipt certified on Solana:', signature);
 
-      // Get transaction details
       const txDetails = await this.connection.getTransaction(signature, {
         commitment: 'confirmed'
       });
+
+      const cluster = process.env.SOLANA_NETWORK || 'devnet';
 
       return {
         success: true,
         txSignature: signature,
         chainHash: hash,
         timestamp: txDetails?.blockTime ? new Date(txDetails.blockTime * 1000).toISOString() : new Date().toISOString(),
-        explorerUrl: `https://explorer.solana.com/tx/${signature}?cluster=devnet`,
+        explorerUrl: `https://explorer.solana.com/tx/${signature}?cluster=${cluster}`,
         walletAddress: this.wallet.publicKey.toString(),
         metadata
       };
     } catch (error) {
       console.error('❌ Certification failed:', error);
       
-      // Provide helpful error messages
       if (error.message.includes('insufficient funds')) {
         throw new Error('Insufficient SOL balance for transaction. Please fund the wallet or use devnet airdrop.');
       }
@@ -171,23 +133,13 @@ class SolanaService {
     }
   }
 
-  /**
-   * CORE FUNCTION: Verify a receipt hash against on-chain record
-   * 
-   * How it works:
-   * 1. Takes a transaction signature (proof ID)
-   * 2. Fetches the transaction from Solana
-   * 3. Extracts the memo data (which contains the certified hash)
-   * 4. Compares it with the provided hash
-   * 5. Returns verification result
-   * 
-   * @param {string} txSignature - Transaction signature to verify
-   * @param {string} expectedHash - Hash to compare against
-   * @returns {Promise<Object>} Verification result
-   */
+  _explorerTxUrl(txSignature) {
+    const cluster = process.env.SOLANA_NETWORK || 'devnet';
+    return `https://explorer.solana.com/tx/${txSignature}?cluster=${cluster}`;
+  }
+
   async verifyHash(txSignature, expectedHash) {
     try {
-      // Validate inputs
       if (!txSignature || txSignature.length < 64) {
         throw new Error('Invalid transaction signature');
       }
@@ -198,7 +150,6 @@ class SolanaService {
 
       console.log('🔍 Fetching transaction from Solana:', txSignature);
 
-      // Fetch transaction
       const tx = await this.connection.getTransaction(txSignature, {
         commitment: 'confirmed',
         maxSupportedTransactionVersion: 0
@@ -214,19 +165,70 @@ class SolanaService {
         };
       }
 
-      // Extract memo from transaction
-      const memoInstruction = tx.transaction.message.instructions.find(
-        ix => {
+      // CRITICAL FIX: Robust memo extraction
+      const MEMO_PROGRAM_ID = 'MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr';
+      
+      let memoData = null;
+
+      // Try compiled instructions first (newer format)
+      if (tx.transaction.message.compiledInstructions) {
+        for (const ix of tx.transaction.message.compiledInstructions) {
           try {
-            const programId = tx.transaction.message.accountKeys[ix.programIdIndex];
-            return programId.toString() === 'MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr';
-          } catch {
-            return false;
+            const programId = tx.transaction.message.staticAccountKeys[ix.programIdIndex];
+            if (programId && programId.toString() === MEMO_PROGRAM_ID) {
+              // Data is base58 encoded in compiledInstructions
+              const decoded = bs58.decode(ix.data);
+              memoData = decoded.toString('utf8');
+              console.log('🔍 Memo found (compiled):', memoData);
+              break;
+            }
+          } catch (e) {
+            console.log('Failed to decode compiled instruction:', e.message);
           }
         }
-      );
+      }
 
-      if (!memoInstruction) {
+      // Fallback to legacy instructions format
+      if (!memoData && tx.transaction.message.instructions) {
+        for (const ix of tx.transaction.message.instructions) {
+          try {
+            const programId = tx.transaction.message.accountKeys[ix.programIdIndex];
+            if (programId && programId.toString() === MEMO_PROGRAM_ID) {
+              // Try multiple decoding strategies
+              let decoded = null;
+              
+              // Strategy 1: base58 decode
+              try {
+                decoded = bs58.decode(ix.data);
+                memoData = decoded.toString('utf8');
+              } catch (e1) {
+                // Strategy 2: direct buffer if already bytes
+                try {
+                  decoded = Buffer.from(ix.data);
+                  memoData = decoded.toString('utf8');
+                } catch (e2) {
+                  // Strategy 3: base64 decode (some RPC formats)
+                  try {
+                    decoded = Buffer.from(ix.data, 'base64');
+                    memoData = decoded.toString('utf8');
+                  } catch (e3) {
+                    console.log('All decode strategies failed');
+                  }
+                }
+              }
+              
+              if (memoData) {
+                console.log('🔍 Memo found (legacy):', memoData);
+                break;
+              }
+            }
+          } catch (e) {
+            console.log('Failed to decode legacy instruction:', e.message);
+          }
+        }
+      }
+
+      if (!memoData) {
         return {
           verified: false,
           message: 'No memo found in transaction',
@@ -235,10 +237,6 @@ class SolanaService {
           error: 'NO_MEMO_FOUND'
         };
       }
-
-      // Decode memo data
-      const memoData = Buffer.from(memoInstruction.data, 'base64').toString('utf8');
-      console.log('📝 Memo data:', memoData);
 
       // Extract hash from memo (format: "VERICEIPT:v1:HASH:<hash>")
       const hashMatch = memoData.match(/VERICEIPT:v1:HASH:([a-f0-9]{64})/i);
@@ -249,20 +247,21 @@ class SolanaService {
           message: 'Invalid memo format - not a Vericeipt transaction',
           chainHash: null,
           localHash: expectedHash,
-          error: 'INVALID_MEMO_FORMAT'
+          error: 'INVALID_MEMO_FORMAT',
+          memoFound: memoData
         };
       }
 
       const chainHash = hashMatch[1].toLowerCase();
       const localHash = expectedHash.toLowerCase();
 
-      // Compare hashes
       const verified = chainHash === localHash;
 
-      // Get timestamp
       const timestamp = tx.blockTime 
         ? new Date(tx.blockTime * 1000).toISOString() 
         : null;
+
+      const explorerUrl = this._explorerTxUrl(txSignature);
 
       if (verified) {
         return {
@@ -271,7 +270,7 @@ class SolanaService {
           chainHash,
           localHash,
           timestamp,
-          explorerUrl: `https://explorer.solana.com/tx/${txSignature}?cluster=devnet`,
+          explorerUrl,
           walletAddress: this.wallet.publicKey.toString()
         };
       } else {
@@ -282,7 +281,7 @@ class SolanaService {
           localHash,
           timestamp,
           difference: 'Hashes do not match',
-          explorerUrl: `https://explorer.solana.com/tx/${txSignature}?cluster=devnet`
+          explorerUrl
         };
       }
     } catch (error) {
@@ -299,10 +298,6 @@ class SolanaService {
     }
   }
 
-  /**
-   * Get transaction details
-   * Useful for debugging and displaying transaction info
-   */
   async getTransactionDetails(signature) {
     try {
       const tx = await this.connection.getTransaction(signature, {
@@ -321,7 +316,7 @@ class SolanaService {
         slot: tx.slot,
         success: tx.meta.err === null,
         fee: tx.meta.fee,
-        explorerUrl: `https://explorer.solana.com/tx/${signature}?cluster=devnet`
+        explorerUrl: this._explorerTxUrl(signature)
       };
     } catch (error) {
       console.error('Failed to get transaction details:', error);
@@ -329,9 +324,6 @@ class SolanaService {
     }
   }
 
-  /**
-   * Health check - verify Solana connection is working
-   */
   async healthCheck() {
     try {
       const version = await this.connection.getVersion();

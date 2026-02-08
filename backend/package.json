@@ -2,12 +2,12 @@
   "name": "vericeipt-backend",
   "version": "1.0.0",
   "description": "AI-powered receipt verification with Solana blockchain certification",
-  "main": "src/server.js",
+  "main": "server.js",
   "scripts": {
-  "dev": "nodemon server.js",
-  "start": "node server.js",
-  "test": "node test.js"
-},
+    "dev": "nodemon server.js",
+    "start": "node server.js",
+    "test": "node test.js"
+  },
   "keywords": [
     "solana",
     "gemini",
