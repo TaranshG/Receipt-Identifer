@@ -13,17 +13,17 @@ Certiceipt creates a tamper-proof record for receipts by using AI to understand 
 
 ## How to Run
 In one terminal run:
-cd backend 
+- cd backend 
 
 In another terminal run:
-cd mobile 
+- cd mobile 
 
 In the backend terminal run:
-npm install 
-npm run dev
+- npm install 
+- npm run dev
 
 In the mobile on run:
-flutter start -d chrome 
+- flutter start -d chrome 
 
 ## Authors
 Manas Narkar
