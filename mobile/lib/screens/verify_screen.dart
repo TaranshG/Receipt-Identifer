@@ -25,7 +25,7 @@ class _VerifyScreenState extends State<VerifyScreen> {
 
   bool _verifying = false;
   bool _fetchingProof = false;
-  String? _proofStatus; // 'found' | 'not_found' | null
+  String? _proofStatus;
   String? _certifiedSnapshot;
 
   final List<String> _commonCurrencies = ['CAD', 'USD', 'EUR', 'GBP', 'INR', 'AUD', 'Custom'];
@@ -458,8 +458,8 @@ class _VerifyScreenState extends State<VerifyScreen> {
     return TextFormField(
       controller: controller,
       decoration: InputDecoration(labelText: label, prefixIcon: const Icon(Icons.receipt)),
-      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      validator: (v) {
+      keyboardType: TextInputType.number,
+            validator: (v) {
         if (v == null || v.trim().isEmpty) return 'Required';
         if (double.tryParse(v) == null) return 'Invalid number';
         return null;

@@ -6,6 +6,8 @@ import '../models/receipt_input.dart';
 import '../models/receipt_analysis.dart';
 import '../services/api_service.dart';
 import 'result_screen.dart';
+import 'package:flutter/services.dart';
+
 
 class EntryScreen extends StatefulWidget {
   final ReceiptInput? initialInput;
@@ -325,15 +327,18 @@ class _EntryScreenState extends State<EntryScreen> {
   }
 
   Widget _numberField(TextEditingController controller, String label, IconData icon) {
-    return TextFormField(
-      controller: controller,
-      decoration: InputDecoration(labelText: label, prefixIcon: Icon(icon)),
-      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      validator: (v) {
-        if (v == null || v.trim().isEmpty) return 'Required';
-        if (double.tryParse(v) == null) return 'Invalid number';
-        return null;
-      },
-    );
-  }
+  return TextFormField(
+    controller: controller,
+    decoration: InputDecoration(labelText: label, prefixIcon: Icon(icon)),
+    keyboardType: TextInputType.number,
+    inputFormatters: [
+      FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
+    ],
+    validator: (v) {
+      if (v == null || v.trim().isEmpty) return 'Required';
+      if (double.tryParse(v) == null) return 'Invalid number';
+      return null;
+    },
+  );
+}
 }

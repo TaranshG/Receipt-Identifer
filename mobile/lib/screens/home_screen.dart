@@ -51,7 +51,7 @@ class HomeScreen extends StatelessWidget {
             ),
             const SizedBox(width: 12),
             Text(
-              'Vericeipt',
+              'Certiciept',
               style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                     fontWeight: FontWeight.w800,
                     letterSpacing: -0.5,
