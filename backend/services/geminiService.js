@@ -6,6 +6,43 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { validateReceipt } = require('../utils/receiptUtils');
 
+// --- Date helpers: safe "future date" detection (avoid timezone / parsing bugs) ---
+function _parseReceiptDateToLocal(dateStr) {
+  if (!dateStr) return null;
+
+  // Accept "YYYY-MM-DD" or "YYYY-MM-DD HH:mm" or "YYYY-MM-DDTHH:mm"
+  const m = String(dateStr).trim().match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/);
+  if (!m) return null;
+
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  const hh = m[4] ? Number(m[4]) : 0;
+  const mm = m[5] ? Number(m[5]) : 0;
+
+  // Local time to avoid UTC shifting issues
+  return new Date(y, mo - 1, d, hh, mm, 0, 0);
+}
+
+function isFutureReceiptDate(dateStr) {
+  const receiptDate = _parseReceiptDateToLocal(dateStr);
+  if (!receiptDate) return false;
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  // Allow tomorrow (timezone/processing edge cases)
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+
+  return receiptDate > tomorrow;
+}
+
+function removeFutureDateReasons(reasons) {
+  const rx = /(future|in the future)/i;
+  return (reasons || []).filter((r) => !rx.test(String(r)));
+}
+
 class GeminiService {
   constructor(apiKey) {
     if (!apiKey) {
@@ -338,6 +375,24 @@ Analyze this data and provide your structured JSON response.`;
       geminiResult = await this.analyzeManualData(input);
     }
 
+    // --- FIX: If Gemini claims "future date" but local check says it's NOT future,
+    // remove that reason and reduce fraud_score to prevent false HIGH RISK.
+    const geminiSaidFuture =
+      Array.isArray(geminiResult.reasons) &&
+      geminiResult.reasons.some((r) => /(future|in the future)/i.test(String(r)));
+
+    const actuallyFuture = isFutureReceiptDate(geminiResult.date);
+
+    if (geminiSaidFuture && !actuallyFuture) {
+      geminiResult.reasons = removeFutureDateReasons(geminiResult.reasons);
+
+      // Reduce fraud score (Gemini likely inflated it due to the incorrect future-date signal)
+      geminiResult.fraud_score = Math.max(0, (geminiResult.fraud_score || 0) - 35);
+
+      // Add a transparent note so UI explains the correction
+      geminiResult.reasons.push('✅ Date checked locally: not in the future (Gemini corrected).');
+    }
+
     // If UNREADABLE, don't run strict validators that assume fields exist
     if (geminiResult.verdict === 'UNREADABLE') {
       return {
@@ -365,12 +420,17 @@ Analyze this data and provide your structured JSON response.`;
       enhancedReasons.push(...localValidation.warnings.map((warn) => `⚠️ ${warn}`));
     }
 
+    // If local validation is clean (no issues/warnings), clamp score so legit receipts don't become high-risk
+    if (localValidation.isValid && localValidation.warnings.length === 0) {
+      adjustedFraudScore = Math.min(adjustedFraudScore, 25);
+    }
+
     let verdict = geminiResult.verdict;
     if (adjustedFraudScore >= 70) {
       verdict = 'LIKELY_FAKE';
     } else if (adjustedFraudScore >= 40) {
       verdict = 'SUSPICIOUS';
-    } else if (adjustedFraudScore < 25) {
+    } else if (adjustedFraudScore <= 25) {
       verdict = 'LIKELY_REAL';
     }
 

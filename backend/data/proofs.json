@@ -71,11 +71,11 @@
       "canonicalText": "merchant=costco wholesale\ndate=2021-08-19 17:58\ncurrency=USD\nsubtotal=576.89\ntax=102.67\ntotal=679.56",
       "analysisSummary": {},
       "createdAt": "2026-02-08T09:10:47.445Z",
-      "lastSeenAt": "2026-02-08T09:10:47.445Z",
-      "txSignature": "3xy8X9y7CPUHr1kpGwYAowzCovCB2A9s7Y2nsG8ttKeGPiCeajZXedR6sLuBicJimyATxEoswLPc4jrsSHTQCNhY",
+      "lastSeenAt": "2026-02-11T02:02:09.835Z",
+      "txSignature": "4gvjQphhzJUb3KcfJRXwNDXH1yLgZMnhQCe5BqmmH8arpdKVMC7fpuFmbueQqj2aEJJ8BssoX84RCTVqgBxwR3Uh",
       "firstSeenTx": "3xy8X9y7CPUHr1kpGwYAowzCovCB2A9s7Y2nsG8ttKeGPiCeajZXedR6sLuBicJimyATxEoswLPc4jrsSHTQCNhY",
       "firstSeenAt": "2026-02-08T09:10:47.445Z",
-      "seenCount": 1
+      "seenCount": 2
     },
     "89285199ce26eb66313168dd192fc49053b8450138f58feebb7e1c883bc60c37": {
       "hash": "89285199ce26eb66313168dd192fc49053b8450138f58feebb7e1c883bc60c37",
@@ -86,6 +86,83 @@
       "txSignature": "2goHX4KCzPC35BoHx7mpqkBDTUMyJJcHaL1SoouwXPbW53ohNwpi4otgtvYr4eirCpcqd1W5YfKgjJFZKetJmQff",
       "firstSeenTx": "4RCiyMx12L6Croj58CFjQDnp6Hnr5aDzvcLk8ZobnHy6kfabHEDi21aQ1MTQoL1Anraj2F74jkorj1FQWa9nyx9g",
       "firstSeenAt": "2026-02-08T09:20:32.724Z",
+      "seenCount": 2
+    },
+    "fd931ed889e08f394c7919e24f6edf4986c93d96de197df48a8b5f0c8b8d6367": {
+      "hash": "fd931ed889e08f394c7919e24f6edf4986c93d96de197df48a8b5f0c8b8d6367",
+      "canonicalText": "merchant=\ndate=\ncurrency=CAD\nsubtotal=0.00\ntax=0.00\ntotal=0.00",
+      "analysisSummary": {},
+      "createdAt": "2026-02-08T17:47:34.772Z",
+      "lastSeenAt": "2026-02-08T19:09:22.100Z",
+      "txSignature": "5W4N8TeBkdX7dSPoVh84J6tDk73wRAt4uDfoLCUQDjGL53ZaGb7dQqjXnYs8yFqQwsCGNK2gJipcG9BsoMjsCcJe",
+      "firstSeenTx": "3hFN2mCPCPxT49NFBYYN52vFWr5LL3VRB8TsvzBT9wQrq7fXq286Kn7nV8egTy79tZwu8b2CiT3qza6iDkMJ8eVL",
+      "firstSeenAt": "2026-02-08T17:47:34.772Z",
+      "seenCount": 3
+    },
+    "35d64716ebfdf3e0103e9eb420731afcba6b356c63cf35e4a73496d426aa9ed9": {
+      "hash": "35d64716ebfdf3e0103e9eb420731afcba6b356c63cf35e4a73496d426aa9ed9",
+      "canonicalText": "merchant=tim hortons\ndate=2026-02-01\ncurrency=CAD\nsubtotal=12.00\ntax=1.30\ntotal=14.00",
+      "analysisSummary": {},
+      "createdAt": "2026-02-08T18:04:21.462Z",
+      "lastSeenAt": "2026-02-08T18:04:21.462Z",
+      "txSignature": "5MdwjU7UG6WgYsGHFW3DGXwXMtxr7bZR7nMhjwkdqt1SEVptDz1gFkrdyYSTbryfkwuCSbnGpgK8ewRsLkmkNw49",
+      "firstSeenTx": "5MdwjU7UG6WgYsGHFW3DGXwXMtxr7bZR7nMhjwkdqt1SEVptDz1gFkrdyYSTbryfkwuCSbnGpgK8ewRsLkmkNw49",
+      "firstSeenAt": "2026-02-08T18:04:21.462Z",
+      "seenCount": 1
+    },
+    "094a36e8ca1233c61a46cc70377a7d5e1086f741b567674361b13a66f01fd6a4": {
+      "hash": "094a36e8ca1233c61a46cc70377a7d5e1086f741b567674361b13a66f01fd6a4",
+      "canonicalText": "merchant=tim hortons\ndate=2026-02-08\ncurrency=CAD\nsubtotal=14.00\ntax=1.32\ntotal=15.00",
+      "analysisSummary": {},
+      "createdAt": "2026-02-08T18:14:31.959Z",
+      "lastSeenAt": "2026-02-08T18:14:31.959Z",
+      "txSignature": "3Lqj61ZiCn1UxYDNTaQ6cqqgZm8D4Vg8AuKj2atJhLPVZwvgWdhqm8WCxrSmMoBSVQkv6h9WAQuj3MAvHQHDLWoG",
+      "firstSeenTx": "3Lqj61ZiCn1UxYDNTaQ6cqqgZm8D4Vg8AuKj2atJhLPVZwvgWdhqm8WCxrSmMoBSVQkv6h9WAQuj3MAvHQHDLWoG",
+      "firstSeenAt": "2026-02-08T18:14:31.959Z",
+      "seenCount": 1
+    },
+    "2d9300b8cee4f5d8ab6687528430ea825c19d3d093ac7bb53bc2ccaa24e871c8": {
+      "hash": "2d9300b8cee4f5d8ab6687528430ea825c19d3d093ac7bb53bc2ccaa24e871c8",
+      "canonicalText": "merchant=tim hortons\ndate=2026-02-08\ncurrency=CAD\nsubtotal=13.00\ntax=1.30\ntotal=14.00",
+      "analysisSummary": {},
+      "createdAt": "2026-02-08T18:16:53.366Z",
+      "lastSeenAt": "2026-02-08T18:16:53.366Z",
+      "txSignature": "3HWvjDrpBPhbXLLVYFA3G2AyCgrnRAdKZotuSvYdXvhCMgqghraAFneKGLNqTiUfsgfAXiZgD8bdPrPN6Dftgc3e",
+      "firstSeenTx": "3HWvjDrpBPhbXLLVYFA3G2AyCgrnRAdKZotuSvYdXvhCMgqghraAFneKGLNqTiUfsgfAXiZgD8bdPrPN6Dftgc3e",
+      "firstSeenAt": "2026-02-08T18:16:53.366Z",
+      "seenCount": 1
+    },
+    "0cacb0923b87f2b90cd3c6e897db5c5430c39741a89a449c097db08bf9932df8": {
+      "hash": "0cacb0923b87f2b90cd3c6e897db5c5430c39741a89a449c097db08bf9932df8",
+      "canonicalText": "merchant=tim hortons\ndate=2026-02-08\ncurrency=CAD\nsubtotal=13.00\ntax=1.32\ntotal=15.00",
+      "analysisSummary": {},
+      "createdAt": "2026-02-08T18:20:14.505Z",
+      "lastSeenAt": "2026-02-08T18:20:14.505Z",
+      "txSignature": "5GPDu5L1SxVrc8jZugdXVBBaM4hmttz9hsbR9La1HQurBnbEee61gBh9eYMXX1924mgiMAWpjnHS6vPtSn5dFPFQ",
+      "firstSeenTx": "5GPDu5L1SxVrc8jZugdXVBBaM4hmttz9hsbR9La1HQurBnbEee61gBh9eYMXX1924mgiMAWpjnHS6vPtSn5dFPFQ",
+      "firstSeenAt": "2026-02-08T18:20:14.505Z",
+      "seenCount": 1
+    },
+    "5194e5868d8355876c34b83dc70fbc0c746c13448b7e2bb226336faf05a50a32": {
+      "hash": "5194e5868d8355876c34b83dc70fbc0c746c13448b7e2bb226336faf05a50a32",
+      "canonicalText": "merchant=campus mart\ndate=2026-02-07 00:00\ncurrency=CAD\nsubtotal=12.49\ntax=1.62\ntotal=14.11",
+      "analysisSummary": {},
+      "createdAt": "2026-02-08T18:27:12.771Z",
+      "lastSeenAt": "2026-02-11T01:52:37.100Z",
+      "txSignature": "ah9ijZjfEAA3e65dzXuizhzVgjfRdMBdkAKo6WDHLVwgmLgg9dcGs2KnH8Zvs1Xe6L1NSr79dChNg6oLuo47moF",
+      "firstSeenTx": "5ABHMtSzmdQtinWyZJbuKtznjAazQR4XoNrFnS8VKLmN8bZG2jRhzD35zqy1ZN6Zk4cSC2Ytk8s1caQAXT6nxkXh",
+      "firstSeenAt": "2026-02-08T18:27:12.771Z",
+      "seenCount": 3
+    },
+    "a70c2f5a88c4ed9a6288c3b3c6c041ab5740d4daf351a964cdd3dfe9943b7b71": {
+      "hash": "a70c2f5a88c4ed9a6288c3b3c6c041ab5740d4daf351a964cdd3dfe9943b7b71",
+      "canonicalText": "merchant=campus mart\ndate=2026-02-07 00:00\ncurrency=CAD\nsubtotal=12.49\ntax=1.62\ntotal=19.11",
+      "analysisSummary": {},
+      "createdAt": "2026-02-08T18:30:54.915Z",
+      "lastSeenAt": "2026-02-08T18:33:11.583Z",
+      "txSignature": "2hWSsgxCcAdrVHo1xBkWwiSum2rL8XoEbexUdCXFUgWxPTD9pJqyRFB9HG4LpBcBLwC7tQnhVskjmaMr5JRqdB8i",
+      "firstSeenTx": "55eD4y1mgQ47yZVa9TzUmGGZmcfSPec6RYJRFSnEqHQDJE3mdMVeUWz8bMR8zZEXMcGYTXVsdfJui8ra8ZAR8739",
+      "firstSeenAt": "2026-02-08T18:30:54.915Z",
       "seenCount": 2
     }
   },
@@ -155,6 +232,84 @@
       "hash": "89285199ce26eb66313168dd192fc49053b8450138f58feebb7e1c883bc60c37",
       "canonicalText": "merchant=walmart\ndate=2026-02-08\ncurrency=CAD\nsubtotal=13.00\ntax=1.30\ntotal=15.00",
       "createdAt": "2026-02-08T09:21:19.046Z"
+    },
+    "3hFN2mCPCPxT49NFBYYN52vFWr5LL3VRB8TsvzBT9wQrq7fXq286Kn7nV8egTy79tZwu8b2CiT3qza6iDkMJ8eVL": {
+      "txSignature": "3hFN2mCPCPxT49NFBYYN52vFWr5LL3VRB8TsvzBT9wQrq7fXq286Kn7nV8egTy79tZwu8b2CiT3qza6iDkMJ8eVL",
+      "hash": "fd931ed889e08f394c7919e24f6edf4986c93d96de197df48a8b5f0c8b8d6367",
+      "canonicalText": "merchant=\ndate=\ncurrency=CAD\nsubtotal=0.00\ntax=0.00\ntotal=0.00",
+      "createdAt": "2026-02-08T17:47:34.772Z"
+    },
+    "5MdwjU7UG6WgYsGHFW3DGXwXMtxr7bZR7nMhjwkdqt1SEVptDz1gFkrdyYSTbryfkwuCSbnGpgK8ewRsLkmkNw49": {
+      "txSignature": "5MdwjU7UG6WgYsGHFW3DGXwXMtxr7bZR7nMhjwkdqt1SEVptDz1gFkrdyYSTbryfkwuCSbnGpgK8ewRsLkmkNw49",
+      "hash": "35d64716ebfdf3e0103e9eb420731afcba6b356c63cf35e4a73496d426aa9ed9",
+      "canonicalText": "merchant=tim hortons\ndate=2026-02-01\ncurrency=CAD\nsubtotal=12.00\ntax=1.30\ntotal=14.00",
+      "createdAt": "2026-02-08T18:04:21.462Z"
+    },
+    "3Lqj61ZiCn1UxYDNTaQ6cqqgZm8D4Vg8AuKj2atJhLPVZwvgWdhqm8WCxrSmMoBSVQkv6h9WAQuj3MAvHQHDLWoG": {
+      "txSignature": "3Lqj61ZiCn1UxYDNTaQ6cqqgZm8D4Vg8AuKj2atJhLPVZwvgWdhqm8WCxrSmMoBSVQkv6h9WAQuj3MAvHQHDLWoG",
+      "hash": "094a36e8ca1233c61a46cc70377a7d5e1086f741b567674361b13a66f01fd6a4",
+      "canonicalText": "merchant=tim hortons\ndate=2026-02-08\ncurrency=CAD\nsubtotal=14.00\ntax=1.32\ntotal=15.00",
+      "createdAt": "2026-02-08T18:14:31.959Z"
+    },
+    "3HWvjDrpBPhbXLLVYFA3G2AyCgrnRAdKZotuSvYdXvhCMgqghraAFneKGLNqTiUfsgfAXiZgD8bdPrPN6Dftgc3e": {
+      "txSignature": "3HWvjDrpBPhbXLLVYFA3G2AyCgrnRAdKZotuSvYdXvhCMgqghraAFneKGLNqTiUfsgfAXiZgD8bdPrPN6Dftgc3e",
+      "hash": "2d9300b8cee4f5d8ab6687528430ea825c19d3d093ac7bb53bc2ccaa24e871c8",
+      "canonicalText": "merchant=tim hortons\ndate=2026-02-08\ncurrency=CAD\nsubtotal=13.00\ntax=1.30\ntotal=14.00",
+      "createdAt": "2026-02-08T18:16:53.366Z"
+    },
+    "5GPDu5L1SxVrc8jZugdXVBBaM4hmttz9hsbR9La1HQurBnbEee61gBh9eYMXX1924mgiMAWpjnHS6vPtSn5dFPFQ": {
+      "txSignature": "5GPDu5L1SxVrc8jZugdXVBBaM4hmttz9hsbR9La1HQurBnbEee61gBh9eYMXX1924mgiMAWpjnHS6vPtSn5dFPFQ",
+      "hash": "0cacb0923b87f2b90cd3c6e897db5c5430c39741a89a449c097db08bf9932df8",
+      "canonicalText": "merchant=tim hortons\ndate=2026-02-08\ncurrency=CAD\nsubtotal=13.00\ntax=1.32\ntotal=15.00",
+      "createdAt": "2026-02-08T18:20:14.505Z"
+    },
+    "5ABHMtSzmdQtinWyZJbuKtznjAazQR4XoNrFnS8VKLmN8bZG2jRhzD35zqy1ZN6Zk4cSC2Ytk8s1caQAXT6nxkXh": {
+      "txSignature": "5ABHMtSzmdQtinWyZJbuKtznjAazQR4XoNrFnS8VKLmN8bZG2jRhzD35zqy1ZN6Zk4cSC2Ytk8s1caQAXT6nxkXh",
+      "hash": "5194e5868d8355876c34b83dc70fbc0c746c13448b7e2bb226336faf05a50a32",
+      "canonicalText": "merchant=campus mart\ndate=2026-02-07 00:00\ncurrency=CAD\nsubtotal=12.49\ntax=1.62\ntotal=14.11",
+      "createdAt": "2026-02-08T18:27:12.771Z"
+    },
+    "55eD4y1mgQ47yZVa9TzUmGGZmcfSPec6RYJRFSnEqHQDJE3mdMVeUWz8bMR8zZEXMcGYTXVsdfJui8ra8ZAR8739": {
+      "txSignature": "55eD4y1mgQ47yZVa9TzUmGGZmcfSPec6RYJRFSnEqHQDJE3mdMVeUWz8bMR8zZEXMcGYTXVsdfJui8ra8ZAR8739",
+      "hash": "a70c2f5a88c4ed9a6288c3b3c6c041ab5740d4daf351a964cdd3dfe9943b7b71",
+      "canonicalText": "merchant=campus mart\ndate=2026-02-07 00:00\ncurrency=CAD\nsubtotal=12.49\ntax=1.62\ntotal=19.11",
+      "createdAt": "2026-02-08T18:30:54.915Z"
+    },
+    "2hWSsgxCcAdrVHo1xBkWwiSum2rL8XoEbexUdCXFUgWxPTD9pJqyRFB9HG4LpBcBLwC7tQnhVskjmaMr5JRqdB8i": {
+      "txSignature": "2hWSsgxCcAdrVHo1xBkWwiSum2rL8XoEbexUdCXFUgWxPTD9pJqyRFB9HG4LpBcBLwC7tQnhVskjmaMr5JRqdB8i",
+      "hash": "a70c2f5a88c4ed9a6288c3b3c6c041ab5740d4daf351a964cdd3dfe9943b7b71",
+      "canonicalText": "merchant=campus mart\ndate=2026-02-07 00:00\ncurrency=CAD\nsubtotal=12.49\ntax=1.62\ntotal=19.11",
+      "createdAt": "2026-02-08T18:33:11.583Z"
+    },
+    "4WTKudnJopoDrHyKsTJr9Mr47ueuoni6hWwptjUnyh7HMMsPadEUn1AbnNWQmzDWwrTJKRWeQ1aSALFTTMTyMgCp": {
+      "txSignature": "4WTKudnJopoDrHyKsTJr9Mr47ueuoni6hWwptjUnyh7HMMsPadEUn1AbnNWQmzDWwrTJKRWeQ1aSALFTTMTyMgCp",
+      "hash": "fd931ed889e08f394c7919e24f6edf4986c93d96de197df48a8b5f0c8b8d6367",
+      "canonicalText": "merchant=\ndate=\ncurrency=CAD\nsubtotal=0.00\ntax=0.00\ntotal=0.00",
+      "createdAt": "2026-02-08T18:54:36.758Z"
+    },
+    "5W4N8TeBkdX7dSPoVh84J6tDk73wRAt4uDfoLCUQDjGL53ZaGb7dQqjXnYs8yFqQwsCGNK2gJipcG9BsoMjsCcJe": {
+      "txSignature": "5W4N8TeBkdX7dSPoVh84J6tDk73wRAt4uDfoLCUQDjGL53ZaGb7dQqjXnYs8yFqQwsCGNK2gJipcG9BsoMjsCcJe",
+      "hash": "fd931ed889e08f394c7919e24f6edf4986c93d96de197df48a8b5f0c8b8d6367",
+      "canonicalText": "merchant=\ndate=\ncurrency=CAD\nsubtotal=0.00\ntax=0.00\ntotal=0.00",
+      "createdAt": "2026-02-08T19:09:22.100Z"
+    },
+    "3xDuKDYMEyLgu1UZ7DiKvDzfj4XhngnGdv2UF5CpP9APpJ8CFELV4PSyTVBkuLS85vGgxsebFiWxCfbmVSChQSKs": {
+      "txSignature": "3xDuKDYMEyLgu1UZ7DiKvDzfj4XhngnGdv2UF5CpP9APpJ8CFELV4PSyTVBkuLS85vGgxsebFiWxCfbmVSChQSKs",
+      "hash": "5194e5868d8355876c34b83dc70fbc0c746c13448b7e2bb226336faf05a50a32",
+      "canonicalText": "merchant=campus mart\ndate=2026-02-07 00:00\ncurrency=CAD\nsubtotal=12.49\ntax=1.62\ntotal=14.11",
+      "createdAt": "2026-02-11T01:32:40.790Z"
+    },
+    "ah9ijZjfEAA3e65dzXuizhzVgjfRdMBdkAKo6WDHLVwgmLgg9dcGs2KnH8Zvs1Xe6L1NSr79dChNg6oLuo47moF": {
+      "txSignature": "ah9ijZjfEAA3e65dzXuizhzVgjfRdMBdkAKo6WDHLVwgmLgg9dcGs2KnH8Zvs1Xe6L1NSr79dChNg6oLuo47moF",
+      "hash": "5194e5868d8355876c34b83dc70fbc0c746c13448b7e2bb226336faf05a50a32",
+      "canonicalText": "merchant=campus mart\ndate=2026-02-07 00:00\ncurrency=CAD\nsubtotal=12.49\ntax=1.62\ntotal=14.11",
+      "createdAt": "2026-02-11T01:52:37.100Z"
+    },
+    "4gvjQphhzJUb3KcfJRXwNDXH1yLgZMnhQCe5BqmmH8arpdKVMC7fpuFmbueQqj2aEJJ8BssoX84RCTVqgBxwR3Uh": {
+      "txSignature": "4gvjQphhzJUb3KcfJRXwNDXH1yLgZMnhQCe5BqmmH8arpdKVMC7fpuFmbueQqj2aEJJ8BssoX84RCTVqgBxwR3Uh",
+      "hash": "fb073d1131825cc69d87e72cb53cd9dffe3136f51b98eef4dee5bf8022f11399",
+      "canonicalText": "merchant=costco wholesale\ndate=2021-08-19 17:58\ncurrency=USD\nsubtotal=576.89\ntax=102.67\ntotal=679.56",
+      "createdAt": "2026-02-11T02:02:09.835Z"
     }
   }
 }
